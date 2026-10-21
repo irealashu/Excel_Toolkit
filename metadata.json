@@ -1,0 +1,6 @@
+{
+  "name": "Excel Toolkit",
+  "description": "Complete browser-only spreadsheet, file conversion, data cleaning, and data utility platform.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,956 @@
+MASTER BUILD PROMPT — Excel Toolkit
+ Complete Browser-Only Spreadsheet, File Conversion, and Data Utility Platform
+
+1. Mission
+
+Act as a principal software architect, senior React and TypeScript engineer, spreadsheet-engine specialist, document-processing engineer, UI/UX designer, security engineer, and test automation engineer.
+
+Build a complete, production-quality, extensible spreadsheet and data utility SAAS style site named Excel Toolkit with modern UI and animations. No extra AI jargon in the UI.
+
+Repository name: Excel_Toolkit
+
+The platform must provide spreadsheet viewing and editing, file conversion, data cleaning, workbook comparison, formula tools, document utilities, data visualization, security inspection, recovery utilities, and downloadable spreadsheet templates.
+
+Create the actual GitHub-ready project. Implement the code, install compatible dependencies, configure the development environment, run tests, resolve errors, and write documentation.
+
+Do not stop at a plan, prototype, wireframe, directory tree, or collection of placeholder components.
+
+The application must be a static, client-side web application that processes supported files entirely on the user's device.
+
+2. Non-negotiable architecture
+ Allowed
+ React, TypeScript, and browser-compatible JavaScript.
+ Third-party npm packages for parsing, editing, calculation, conversion, compression, OCR, charting, and document generation.
+ WebAssembly libraries that execute locally.
+ Web Workers for expensive operations.
+ Browser-native file, clipboard, canvas, cryptography, and storage APIs.
+ IndexedDB and localStorage for explicitly documented browser-local persistence.
+ Static hosting, including GitHub Pages.
+ Locally bundled workers, WASM binaries, fonts, and processing assets.
+ Commercially licensed libraries when their licensing terms are followed.
+ Prohibited
+ Application backends.
+ API routes and server functions.
+ Server-side file processing.
+ Databases or cloud storage services.
+ Remote conversion or formula-calculation services.
+ AI models, AI APIs, and hosted AI features.
+ Sending user files, workbook contents, formulas, metadata, or generated results to remote services.
+ Analytics, advertising, trackers, and session-recording scripts.
+ Runtime dependencies on remote processing endpoints.
+
+The rule is simple: third-party libraries are allowed, but supported processing must happen locally in the browser.
+
+Network isolation
+
+Bundle runtime dependencies locally wherever practical.
+
+After the required application assets have loaded, supported operations must continue with the network disabled.
+
+Do not silently download remote workers, OCR models, language packs, or processing code when a user selects a file.
+
+Create automated network-interception tests to detect unexpected external requests and prevent transmission of user data.
+
+Static asset delivery is allowed. File processing must not depend on a remote service.
+
+3. Technology stack
+
+Use the following technologies unless compatibility, licensing, or implementation evidence justifies a documented alternative.
+
+Application foundation
+ React.
+ TypeScript with strict type checking.
+ Vite.
+ React Router.
+ Tailwind CSS.
+ Lucide React.
+ Zod for validation.
+ React Hook Form for complex forms.
+ Zustand for shared state where appropriate.
+ TanStack Virtual for large data grids when needed.
+ Recharts for charts.
+ Spreadsheet processing
+
+Evaluate and select suitable browser-compatible libraries:
+
+SheetJS Community Edition (xlsx) for spreadsheet parsing and serialization.
+ ExcelJS for workbook creation and supported formatting.
+ HyperFormula for local formula calculation when suitable for the required feature set and licensing.
+ Formula.js for compatible formula utilities.
+ A suitable spreadsheet grid or editor library for cell editing and keyboard navigation.
+
+Do not assume any one library supports all Excel formats, formulas, or workbook features.
+
+File and document processing
+ Papa Parse for CSV.
+ JSZip or fflate for ZIP archives.
+ PDF.js for PDF reading.
+ pdf-lib or jsPDF for PDF creation.
+ Mammoth.js for DOCX extraction.
+ docx for DOCX generation.
+ js-yaml for YAML.
+ Browser DOMParser with safe validation, or a suitable XML parser.
+ A browser-compatible SQL parser.
+ A maintained Markdown parser.
+ Suitable local libraries for iCalendar and vCard generation.
+ Tesseract.js for optional browser-side OCR with locally bundled runtime assets.
+ DOMPurify for HTML sanitization.
+
+Use additional packages only when they provide clear value.
+
+Before installing a library, verify maintenance, browser compatibility, actual capabilities, security advisories, transitive dependencies, bundle size, and licensing.
+
+Record selected dependencies and their purpose in docs/DEPENDENCIES.md.
+
+Do not install multiple overlapping libraries without a clear reason.
+
+4. Corrected repository structure
+
+Create this repository structure and adapt it only when a documented architectural reason justifies a change.
+
+Excel_Toolkit/
+ ├── public/
+ │ ├── favicon.svg
+ │ ├── logo.svg
+ │ ├── manifest.webmanifest
+ │ ├── robots.txt
+ │ ├── offline.html
+ ├── docs/
+ │ ├── ARCHITECTURE.md
+ │ ├── DEPENDENCIES.md
+ │ ├── TOOL_CATALOG.md
+ │ ├── FORMAT_SUPPORT.md
+ │ ├── FORMULA_COMPATIBILITY.md
+ │ ├── SECURITY_MODEL.md
+ │ ├── PRIVACY_MODEL.md
+ │ ├── IMPLEMENTATION_STATUS.md
+ │ ├── ADDING_A_TOOL.md
+ │ ├── ADDING_A_CONVERTER.md
+ │ ├── ADDING_A_PROCESSOR.md
+ │ └── DEPLOYMENT.md
+ ├── scripts/
+ │ ├── validate-tool-registry.ts
+ │ ├── validate-routes.ts
+ │ ├── check-client-only.ts
+ │ ├── check-dependency-licenses.ts
+ │ └── validate-static-build.ts
+ ├── src/
+ │ ├── app/
+ │ │ ├── App.tsx
+ │ │ ├── main.tsx
+ │ │ ├── router.tsx
+ │ │ ├── providers.tsx
+ │ │ ├── routeManifest.ts
+ │ │ └── errorBoundary.tsx
+ │ ├── pages/
+ │ │ ├── HomePage.tsx
+ │ │ ├── ToolsPage.tsx
+ │ │ ├── ToolPage.tsx
+ │ │ ├── CategoryPage.tsx
+ │ │ ├── EditorPage.tsx
+ │ │ ├── AboutPage.tsx
+ │ │ ├── PrivacyPage.tsx
+ │ │ ├── HelpPage.tsx
+ │ │ ├── FormatSupportPage.tsx
+ │ │ ├── NotFoundPage.tsx
+ │ │ └── OfflinePage.tsx
+ │ ├── components/
+ │ │ ├── layout/
+ │ │ │ ├── AppShell.tsx
+ │ │ │ ├── Header.tsx
+ │ │ │ ├── Footer.tsx
+ │ │ │ ├── Sidebar.tsx
+ │ │ │ ├── MobileNavigation.tsx
+ │ │ │ └── Breadcrumbs.tsx
+ │ │ ├── navigation/
+ │ │ │ ├── ToolSearch.tsx
+ │ │ │ ├── CategoryFilter.tsx
+ │ │ │ ├── FormatFilter.tsx
+ │ │ │ └── CommandPalette.tsx
+ │ │ ├── tools/
+ │ │ │ ├── ToolCard.tsx
+ │ │ │ ├── ToolGrid.tsx
+ │ │ │ ├── ToolHeader.tsx
+ │ │ │ ├── ToolWorkspace.tsx
+ │ │ │ ├── ToolOptions.tsx
+ │ │ │ ├── ToolResult.tsx
+ │ │ │ └── ToolLimitations.tsx
+ │ │ ├── files/
+ │ │ │ ├── FileDropzone.tsx
+ │ │ │ ├── FilePicker.tsx
+ │ │ │ ├── FileList.tsx
+ │ │ │ ├── FileMetadata.tsx
+ │ │ │ ├── ProcessingStatus.tsx
+ │ │ │ └── DownloadButton.tsx
+ │ │ ├── spreadsheet/
+ │ │ │ ├── SpreadsheetGrid.tsx
+ │ │ │ ├── FormulaBar.tsx
+ │ │ │ ├── WorkbookToolbar.tsx
+ │ │ │ ├── SheetTabs.tsx
+ │ │ │ ├── CellEditor.tsx
+ │ │ │ ├── FindReplacePanel.tsx
+ │ │ │ └── WorkbookStatusBar.tsx
+ │ │ ├── results/
+ │ │ │ ├── DataPreview.tsx
+ │ │ │ ├── ComparisonTable.tsx
+ │ │ │ ├── StatisticsPanel.tsx
+ │ │ │ └── ConversionReport.tsx
+ │ │ └── ui/
+ │ │ ├── Button.tsx
+ │ │ ├── Input.tsx
+ │ │ ├── Select.tsx
+ │ │ ├── Dialog.tsx
+ │ │ ├── Tabs.tsx
+ │ │ ├── Tooltip.tsx
+ │ │ ├── Toast.tsx
+ │ │ ├── EmptyState.tsx
+ │ │ └── ConfirmDialog.tsx
+ │ ├── registry/
+ │ │ ├── types.ts
+ │ │ ├── toolRegistry.ts
+ │ │ ├── categories.ts
+ │ │ ├── aliases.ts
+ │ │ ├── capabilities.ts
+ │ │ └── relatedTools.ts
+ │ ├── core/
+ │ │ ├── files/
+ │ │ │ ├── readFile.ts
+ │ │ │ ├── validateFile.ts
+ │ │ │ ├── detectFormat.ts
+ │ │ │ ├── fileLimits.ts
+ │ │ │ ├── parseWorkbook.ts
+ │ │ │ └── downloadBlob.ts
+ │ │ ├── workbook/
+ │ │ │ ├── workbookTypes.ts
+ │ │ │ ├── workbookAdapter.ts
+ │ │ │ ├── sheetAdapter.ts
+ │ │ │ ├── cellAdapter.ts
+ │ │ │ ├── workbookMetadata.ts
+ │ │ │ └── roundTripWarnings.ts
+ │ │ ├── transforms/
+ │ │ │ ├── removeDuplicates.ts
+ │ │ │ ├── removeBlankRows.ts
+ │ │ │ ├── removeBlankColumns.ts
+ │ │ │ ├── trimWhitespace.ts
+ │ │ │ ├── normalizeValues.ts
+ │ │ │ ├── sortRows.ts
+ │ │ │ ├── filterRows.ts
+ │ │ │ ├── splitColumns.ts
+ │ │ │ ├── combineColumns.ts
+ │ │ │ ├── transpose.ts
+ │ │ │ ├── compareWorkbooks.ts
+ │ │ │ ├── compareColumns.ts
+ │ │ │ ├── mergeWorkbooks.ts
+ │ │ │ ├── joinTables.ts
+ │ │ │ ├── extractColumns.ts
+ │ │ │ ├── findReplace.ts
+ │ │ │ ├── unpivot.ts
+ │ │ │ └── profileData.ts
+ │ │ ├── converters/
+ │ │ │ ├── csv.ts
+ │ │ │ ├── tsv.ts
+ │ │ │ ├── json.ts
+ │ │ │ ├── xml.ts
+ │ │ │ ├── html.ts
+ │ │ │ ├── markdown.ts
+ │ │ │ ├── yaml.ts
+ │ │ │ ├── sql.ts
+ │ │ │ ├── latex.ts
+ │ │ │ ├── text.ts
+ │ │ │ ├── pdf.ts
+ │ │ │ ├── docx.ts
+ │ │ │ ├── ics.ts
+ │ │ │ └── vcard.ts
+ │ │ ├── formulas/
+ │ │ │ ├── engineAdapter.ts
+ │ │ │ ├── functionRegistry.ts
+ │ │ │ ├── referenceParser.ts
+ │ │ │ ├── dependencyGraph.ts
+ │ │ │ ├── recalculate.ts
+ │ │ │ └── compatibility.ts
+ │ │ ├── generators/
+ │ │ │ ├── formulaGenerator.ts
+ │ │ │ ├── lookupGenerators.ts
+ │ │ │ ├── conditionalGenerators.ts
+ │ │ │ └── regexGenerator.ts
+ │ │ ├── security/
+ │ │ │ ├── sanitizeHtml.ts
+ │ │ │ ├── inspectZip.ts
+ │ │ │ ├── inspectMacros.ts
+ │ │ │ ├── inspectMetadata.ts
+ │ │ │ └── passwordProtection.ts
+ │ │ ├── workers/
+ │ │ │ ├── parse.worker.ts
+ │ │ │ ├── transform.worker.ts
+ │ │ │ ├── convert.worker.ts
+ │ │ │ ├── formula.worker.ts
+ │ │ │ └── workerClient.ts
+ │ │ ├── storage/
+ │ │ │ ├── preferences.ts
+ │ │ │ ├── localDrafts.ts
+ │ │ │ └── storageTypes.ts
+ │ │ ├── errors/
+ │ │ │ ├── AppError.ts
+ │ │ │ ├── errorMessages.ts
+ │ │ │ └── errorReporting.ts
+ │ │ └── utils/
+ │ │ ├── dates.ts
+ │ │ ├── numbers.ts
+ │ │ ├── columnLetters.ts
+ │ │ ├── mimeTypes.ts
+ │ │ └── formatBytes.ts
+ │ ├── features/
+ │ │ ├── viewers/
+ │ │ │ ├── components/
+ │ │ │ ├── services/
+ │ │ │ ├── tools.ts
+ │ │ │ └── index.ts
+ │ │ ├── editor/
+ │ │ │ ├── components/
+ │ │ │ ├── hooks/
+ │ │ │ ├── services/
+ │ │ │ ├── state/
+ │ │ │ └── index.ts
+ │ │ ├── converters/
+ │ │ │ ├── components/
+ │ │ │ ├── services/
+ │ │ │ ├── tools.ts
+ │ │ │ └── index.ts
+ │ │ ├── data-cleaning/
+ │ │ │ ├── components/
+ │ │ │ ├── services/
+ │ │ │ ├── tools.ts
+ │ │ │ └── index.ts
+ │ │ ├── comparison/
+ │ │ │ ├── components/
+ │ │ │ ├── services/
+ │ │ │ ├── tools.ts
+ │ │ │ └── index.ts
+ │ │ ├── formulas/
+ │ │ │ ├── components/
+ │ │ │ ├── services/
+ │ │ │ ├── tools.ts
+ │ │ │ └── index.ts
+ │ │ ├── visualization/
+ │ │ │ ├── components/
+ │ │ │ ├── services/
+ │ │ │ ├── tools.ts
+ │ │ │ └── index.ts
+ │ │ ├── templates/
+ │ │ │ ├── components/
+ │ │ │ ├── definitions/
+ │ │ │ ├── services/
+ │ │ │ └── index.ts
+ │ │ ├── security/
+ │ │ │ ├── components/
+ │ │ │ ├── services/
+ │ │ │ ├── tools.ts
+ │ │ │ └── index.ts
+ │ │ └── document-tools/
+ │ │ ├── components/
+ │ │ ├── services/
+ │ │ ├── tools.ts
+ │ │ └── index.ts
+ │ ├── hooks/
+ │ │ ├── useFilePicker.ts
+ │ │ ├── useWorker.ts
+ │ │ ├── useTheme.ts
+ │ │ ├── useUndoRedo.ts
+ │ │ └── useCommandPalette.ts
+ │ ├── styles/
+ │ │ ├── globals.css
+ │ │ ├── tokens.css
+ │ │ └── spreadsheet.css
+ │ ├── test/
+ │ │ ├── fixtures/
+ │ │ ├── unit/
+ │ │ ├── components/
+ │ │ ├── integration/
+ │ │ └── e2e/
+ │ └── types/
+ │ └── global.d.ts
+ ├── .github/
+ │ └── workflows/
+ │ ├── ci.yml
+ │ └── deploy-pages.yml
+ ├── .editorconfig
+ ├── .gitignore
+ ├── LICENSE
+ ├── README.md
+ ├── CONTRIBUTING.md
+ ├── SECURITY.md
+ ├── PRIVACY.md
+ ├── package.json
+ ├── package-lock.json
+ ├── tsconfig.json
+ ├── tsconfig.app.json
+ ├── tsconfig.node.json
+ ├── vite.config.ts
+ ├── vitest.config.ts
+ ├── playwright.config.ts
+ ├── eslint.config.js
+ ├── prettier.config.js
+ ├── postcss.config.js
+ └── index.html
+
+The repository structure is a guide, not a requirement to generate empty files. Every module must have a clear purpose. Avoid duplicate implementations between core/ and features/: shared processing belongs in core/, while feature-specific UI and orchestration belong in features/.
+
+5. Feature stack
+
+Implement the following features using the shared processing architecture.
+
+A. Spreadsheet viewing
+ XLSX viewer.
+ XLS viewer where supported.
+ XLSM viewer where supported.
+ XLSB viewer where supported.
+ CSV viewer.
+ TSV viewer.
+ JSON table viewer.
+ Workbook sheet selector.
+ Workbook dimensions and metadata.
+ Hidden-sheet inspection.
+ Large-table virtualization.
+ Search within a sheet.
+ Copy selected cells.
+ Download extracted data.
+
+Display unsupported features and parsing errors honestly.
+
+B. Spreadsheet editing
+
+Build an in-browser spreadsheet editor with:
+
+Blank workbook creation.
+ Workbook import.
+ Cell editing.
+ Formula bar.
+ Sheet tabs.
+ Worksheet creation, deletion, and renaming.
+ Row and column insertion/deletion.
+ Cell selection.
+ Keyboard navigation.
+ Copy and paste.
+ Find and replace.
+ Undo and redo.
+ Basic formatting where supported.
+ Sorting and filtering.
+ Supported formula calculation.
+ XLSX export.
+ Conversion warnings.
+
+Keep editor state independent from the underlying file parser.
+
+Do not claim full Excel compatibility.
+
+C. File converters
+
+Implement the following using reusable conversion adapters:
+
+CSV to XLSX.
+ XLSX to CSV.
+ TSV to XLSX.
+ XLSX to TSV.
+ JSON to XLSX.
+ XLSX to JSON.
+ JSON to CSV.
+ XML to XLSX.
+ HTML tables to XLSX.
+ XLSX to HTML.
+ Markdown tables to XLSX.
+ XLSX to Markdown.
+ YAML to XLSX.
+ XLSX to YAML.
+ SQL INSERT to XLSX.
+ XLSX to SQL INSERT.
+ XLSX to LaTeX.
+ XLSX to JSON Lines.
+ XLSX to plain text.
+ Text to XLSX.
+ XLSX to PDF.
+ PDF text/table extraction to CSV or XLSX.
+ DOCX table extraction to XLSX.
+ XLS to XLSX where supported.
+ XLSX to XLS where supported.
+ ODS conversions where supported.
+ Tabular data to ICS.
+ Tabular data to vCard.
+ Excel-to-image export for supported rendering workflows.
+
+For each conversion, provide input validation, configurable options, preview, export, correct MIME types, error handling, and conversion-loss reporting.
+
+Do not advertise unsupported formats as functional.
+
+D. Data cleaning and transformation
+
+Implement:
+
+Remove duplicate rows.
+ Highlight duplicates.
+ Remove blank rows.
+ Remove blank columns.
+ Trim leading/trailing whitespace.
+ Normalize whitespace.
+ Find and replace.
+ Sort rows.
+ Filter rows.
+ Split columns by delimiter.
+ Combine columns.
+ Extract selected columns.
+ Reorder columns.
+ Transpose rows and columns.
+ Unpivot cross-tabulated data.
+ Merge workbooks.
+ Join tables using selected keys.
+ Compare columns.
+ Compare workbooks.
+ Split workbooks by worksheet.
+ Split rows into separate files by column value.
+ Extract emails and URLs.
+ Extract regex matches.
+ Convert Excel serial dates.
+ Convert column letters and indices.
+ Generate missing-value reports.
+ Generate column statistics.
+ Detect duplicates by composite keys.
+ Generate random sample datasets.
+
+Implement transformations as pure TypeScript functions wherever possible.
+
+Each transformation must have deterministic output, option validation, appropriate edge-case handling, and unit tests.
+
+E. Formula tools
+
+Implement:
+
+Formula generator.
+ Rule-based formula explainer.
+ VLOOKUP generator.
+ XLOOKUP generator.
+ IF formula generator.
+ INDEX/MATCH generator.
+ SUMIF generator.
+ COUNTIF generator.
+ TEXTJOIN generator.
+ Regex formula generator.
+ Date difference calculator.
+ Column-letter converter.
+ Excel function reference.
+ Formula cheat sheet.
+ Data-validation rule builder.
+
+Formula tools must generate actual formula strings from validated inputs.
+
+Use a real local formula engine for calculation where supported. Do not use eval, new Function, AI APIs, or remote formula services.
+
+Document supported functions, reference semantics, date behavior, unsupported features, and calculation differences.
+
+F. Data visualization
+
+Implement:
+
+Bar charts.
+ Line charts.
+ Pie charts.
+ Scatter plots where suitable.
+ Category summaries.
+ Grouped totals.
+ Pivot-style aggregation.
+ Column statistics.
+ Missing-value visualization.
+ Duplicate summaries.
+
+Allow users to select columns, configure chart options, preview results, and export the chart or summarized data where supported.
+
+All calculations and chart data preparation must run locally.
+
+G. Templates
+
+Generate downloadable templates for:
+
+Budget.
+ Invoice.
+ Purchase order.
+ Expense report.
+ Inventory.
+ Timesheet.
+ Calendar.
+ Employee schedule.
+ Attendance.
+ CRM contacts.
+ Profit and loss.
+ Cash flow.
+ Balance sheet.
+ Gantt chart data.
+ Amortization schedule.
+ Payroll calculations.
+ Mileage log.
+ Check register.
+ Receipt register.
+ Invoice tracker.
+ Rent ledger.
+ Sign-in sheet.
+ Dashboard sample data.
+
+Use fictional sample data, sensible headers, and formulas where supported. Label templates as examples, not certified financial or legal software.
+
+H. Security and workbook inspection
+
+Implement:
+
+Workbook metadata inspection.
+ Hidden-sheet inspection.
+ ZIP/XML package inspection.
+ Macro inspection.
+ Personal metadata removal where supported.
+ Macro-free output generation where feasible.
+ Worksheet protection where supported.
+ Password-protection status reporting.
+ Basic workbook corruption diagnostics.
+ Recoverable data extraction where feasible.
+
+Never execute imported macros or embedded scripts.
+
+Do not claim to remove strong encryption or recover passwords unless a real, tested implementation supports the operation.
+
+Treat file content as untrusted. Apply archive-size limits and safe parsing.
+
+I. Document utilities
+
+Implement browser-only document utilities for:
+
+PDF text extraction.
+ PDF generation.
+ DOCX table extraction.
+ DOCX generation where useful.
+ XML parsing and validation.
+ YAML conversion.
+ Markdown table conversion.
+ SQL generation and parsing.
+ Plain-text transformations.
+ ICS generation.
+ vCard generation.
+ Optional OCR using locally bundled Tesseract.js assets.
+
+For OCR, provide clear accuracy limitations. Do not use AI or hosted OCR services.
+
+6. Tool registry and routing
+
+Every tool must be registered centrally.
+
+Each entry must define:
+
+Unique ID.
+ Slug.
+ Name.
+ Description.
+ Category.
+ Search keywords.
+ Accepted formats.
+ Output formats.
+ Processing mode.
+ Capability metadata.
+ Implementation status.
+ Options schema.
+ Implementation reference.
+ Known limitations.
+ Related tools.
+
+Generate category counts and route definitions from the registry.
+
+Every registered tool must resolve to a valid page.
+
+Implement:
+
+Global search.
+ Category filtering.
+ Format filtering.
+ Recently used tools.
+ Related tools.
+ Command palette.
+ Keyboard shortcuts.
+ Deep links.
+ Browser back/forward support.
+ Empty states.
+ Not-found pages.
+
+Use honest statuses: implemented, partial, and planned.
+
+Do not create fake tools merely to increase the total count.
+
+7. Processing pipeline and workers
+
+Build a reusable processing pipeline:
+
+Select a local file.
+ Validate size and type.
+ Detect the format.
+ Read the file.
+ Parse it with an appropriate local library.
+ Normalize data into shared internal types.
+ Execute the requested operation.
+ Generate a preview.
+ Validate the output.
+ Export a Blob.
+ Download the result.
+ Clean up temporary resources.
+
+Use workers for CPU-intensive operations where beneficial.
+
+Implement worker communication with typed request and response messages.
+
+Support progress, errors, cancellation, and cleanup where the underlying task supports them.
+
+Never invent progress or report success before processing finishes.
+
+Avoid loading the same file repeatedly.
+
+Use virtualization for large tables and configurable resource limits for expensive operations.
+
+Never silently truncate data.
+
+8. UI and accessibility
+
+Build an original, professional productivity interface.
+
+Requirements:
+
+Responsive layouts.
+ Light and dark themes.
+ Consistent typography and spacing.
+ Accessible buttons, inputs, dialogs, and menus.
+ Keyboard navigation.
+ Visible focus indicators.
+ Reduced-motion support.
+ WCAG 2.2 AA-oriented contrast.
+ Loading, empty, success, and error states.
+ File drag-and-drop.
+ File picker.
+ Result preview.
+ Download controls.
+ Processing cancellation where supported.
+ Confirmation for destructive actions.
+
+Do not rely on decorative UI or fake processing states.
+
+The interface must remain usable on mobile devices.
+
+9. Privacy and offline support
+
+Implement a transparent privacy model.
+
+Requirements:
+
+Files are processed locally.
+ No file uploads.
+ No AI or external processing APIs.
+ No tracking or advertising.
+ Optional browser-local draft storage.
+ A clear control for deleting saved drafts and preferences.
+ No persistence of uploaded files by default.
+ No caching of user documents in the service worker.
+ A documented offline mode.
+
+Implement a PWA only if its cache and update behavior can be tested.
+
+Bundle processing workers, WASM, and required models locally.
+
+Verify network isolation after required assets are loaded.
+
+Distinguish static asset requests from requests that transmit user data.
+
+10. Security requirements
+ Sanitize imported HTML.
+ Never render imported cell content as trusted HTML.
+ Never execute workbook macros.
+ Never use eval or new Function for formulas.
+ Validate file structure and input types.
+ Apply ZIP expansion limits.
+ Handle malformed archives safely.
+ Bound expensive regex operations.
+ Avoid unsafe deserialization.
+ Use secure browser APIs.
+ Keep dependency versions locked.
+ Document dependency licenses and known security limitations.
+ 11. Testing requirements
+
+Use Vitest, React Testing Library, and Playwright.
+
+Create tests for:
+
+File validation.
+ Format detection.
+ CSV quoting and Unicode.
+ JSON parsing.
+ XML and YAML parsing.
+ Duplicate removal.
+ Blank-row and blank-column removal.
+ Sorting and filtering.
+ Column splitting and joining.
+ Transposition.
+ Workbook comparison.
+ Date conversion.
+ Formula generation.
+ Formula calculation for supported functions.
+ Archive validation.
+ Download MIME types.
+ Worker cancellation.
+ Error handling.
+ Tool registry validity.
+ Route validity.
+ Local persistence.
+
+Integration tests must verify:
+
+File selection → local processing → preview → export.
+
+End-to-end tests must verify:
+
+Homepage.
+ Tool directory.
+ Search and filtering.
+ CSV viewer and editor.
+ XLSX viewer.
+ At least the first implemented converters.
+ Data-cleaning tools.
+ Formula generators.
+ Downloaded output.
+ Responsive navigation.
+ Error states.
+ Network isolation.
+ Offline behavior where supported.
+
+Use deterministic fixtures and expected outputs.
+
+Run tests and fix failures. Do not report unexecuted tests as passing.
+
+12. Build, CI, and deployment
+
+Create GitHub Actions for:
+
+Dependency installation.
+ TypeScript checking.
+ Linting.
+ Unit tests.
+ Integration tests.
+ Production build.
+ Browser tests where practical.
+ Dependency-license validation.
+ Client-only architecture validation.
+ Static artifact validation.
+
+Configure GitHub actions deployment.
+
+Ensure Vite uses the correct repository base path and direct navigation works with the selected static-hosting strategy.
+
+Document other static-hosting options.
+
+Do not introduce server-side rendering or server-dependent deployment settings.
+
+Include latest esbuild version, ensure updated package_lock.json file.
+
+13. Documentation
+
+Create:
+
+README.md
+ CONTRIBUTING.md
+ SECURITY.md
+ PRIVACY.md
+ docs/ARCHITECTURE.md
+ docs/DEPENDENCIES.md
+ docs/TOOL_CATALOG.md
+ docs/FORMAT_SUPPORT.md
+ docs/FORMULA_COMPATIBILITY.md
+ docs/SECURITY_MODEL.md
+ docs/PRIVACY_MODEL.md
+ docs/IMPLEMENTATION_STATUS.md
+ docs/ADDING_A_TOOL.md
+ docs/ADDING_A_CONVERTER.md
+ docs/ADDING_A_PROCESSOR.md
+ docs/DEPLOYMENT.md
+
+Document installation, development, tests, builds, supported formats, limitations, licensing, local storage, offline behavior, and extension points.
+
+14. Implementation phases
+ Phase 1: Project foundation
+
+Initialize React, TypeScript, Vite, routing, styling, linting, testing, and shared components.
+
+Phase 2: Design system and navigation
+
+Implement the app shell, homepage, tool directory, categories, search, filters, theme switching, and responsive navigation.
+
+Phase 3: Registry and processing contracts
+
+Implement the typed tool registry, capability declarations, routes, worker contracts, and validation scripts.
+
+Phase 4: File engine
+
+Implement format detection, validation, parsing adapters, workbook types, downloads, worker communication, and error handling.
+
+Phase 5: First functional tools
+
+Implement and test CSV Viewer, CSV Editor, XLSX Viewer, CSV/XLSX converters, JSON/XLSX converters, duplicate removal, blank-row removal, whitespace cleanup, sorting, filtering, find/replace, text-to-columns, column combination, workbook comparison, merge, data profiling, and transpose.
+
+Phase 6: Spreadsheet editor
+
+Implement editing, keyboard navigation, worksheet management, clipboard support, undo/redo, supported formulas, and workbook export.
+
+Phase 7: Formula and visualization tools
+
+Implement formula generators, local formula calculation, charts, grouped summaries, and pivot-style aggregation.
+
+Phase 8: Additional formats and utilities
+
+Implement document conversion, security inspection, metadata tools, templates, and supported repair utilities.
+
+Phase 9: Offline and security validation
+
+Test local processing, network isolation, storage behavior, PWA caching, and resource limits.
+
+Phase 10: Final delivery
+
+Run all tests, fix failures, complete documentation, validate deployment, and report real implementation coverage.
+
+Maintain a working build after every phase.
+
+If the complete suite cannot be finished in one session, record the remaining work and continue with the highest-priority unfinished implementation. Do not replace missing functionality with placeholders.
+
+15. Final acceptance criteria
+
+The project is complete only when:
+
+It is a runnable React and TypeScript repository.
+ The architecture and file structure are implemented, not merely described.
+ All dependencies are compatible and their licenses reviewed.
+ The production build succeeds.
+ Type checking and linting pass.
+ Automated tests pass.
+ Every implemented tool performs a real operation.
+ Every registered tool has a valid route and truthful status.
+ All supported processing runs in the browser.
+ No backend or AI service is required.
+ No user file is sent to an external processing service.
+ Workers and processing assets are locally deployed.
+ Errors and conversion limitations are clearly reported.
+ The UI is responsive and accessible.
+ Static deployment is configured and documented.
+ Documentation reflects the actual code.
+ No critical workflow relies on a fake success message or inert button.
+
+16. Start implementation
+
+Inspect the current working directory.
+
+Initialize the project if necessary, install compatible dependencies, and implement the application directly.
+
+Do not stop after creating folders.
+
+Do not create empty files merely to match the structure.
+
+Do not ask for approval between routine implementation phases.
+
+Run the available development, lint, test, and build commands. Fix errors as they appear.
+
+The final deliverable must be a maintainable, modular, static web application with a comprehensive spreadsheet-tool feature stack and browser-only processing, with no required backend and no AI.
