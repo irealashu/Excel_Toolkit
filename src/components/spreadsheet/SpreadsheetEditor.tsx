@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   Plus,
   Trash2,
@@ -14,17 +14,18 @@ import {
   DollarSign,
   Percent,
   Search,
+  FilePlus2,
+  ArrowUpDown,
+  AlertCircle,
   Check,
-  FileSpreadsheet,
-  Layers,
-  ChevronRight,
-  FileText
+  Pencil,
+  X,
 } from 'lucide-react';
-import { evaluateFormula, indexToColLetter } from '../../core/formulas';
-import { downloadCsv, downloadXlsx } from '../../core/files/downloadBlob';
+import { evaluateGrid, indexToColLetter } from '../../core/formulas';
+import { downloadEditorXlsx, downloadRawCsv } from '../../core/files/downloadBlob';
 import { parseWorkbookFile } from '../../core/files/parseWorkbook';
-import { SAMPLE_WORKBOOK } from '../../core/files/sampleData';
-import { SheetData, WorkbookData } from '../../registry/types';
+import { cloneSampleWorkbook } from '../../core/files/sampleData';
+import { SheetData } from '../../registry/types';
 
 interface CellFormat {
   bold?: boolean;
@@ -34,73 +35,106 @@ interface CellFormat {
   isPercent?: boolean;
 }
 
-export const SpreadsheetEditor: React.FC = () => {
-  // Current active sheets in editor
-  const [sheets, setSheets] = useState<SheetData[]>(() => [
+function makeDefaultSheets(): SheetData[] {
+  return [
     {
       name: 'Sales_Data',
       headers: ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'],
       rows: [
         ['Product', 'Region', 'Q1 Sales', 'Q2 Sales', 'Total Units', 'Unit Price', 'Gross Revenue', 'Notes'],
-        ['Enterprise Suite', 'North America', 120, 145, 265, 1200, '=E2*F2', 'Key Account'],
-        ['Cloud Starter', 'Europe', 310, 280, 590, 350, '=E3*F3', 'Active promo'],
-        ['Security Gateway', 'Asia Pacific', 95, 110, 205, 2400, '=E4*F4', 'Pending approval'],
-        ['IoT Edge Node', 'North America', 450, 520, 970, 180, '=E5*F5', 'Standard tier'],
-        ['Total Units / Avg', 'Summary', '=AVERAGE(C2:C5)', '=AVERAGE(D2:D5)', '=SUM(E2:E5)', '', '=SUM(G2:G5)', 'Auto computed'],
-        ...Array.from({ length: 15 }, () => Array(8).fill('')),
+        ['Enterprise Suite', 'North America', 120, 145, '=C2+D2', 1200, '=E2*F2', 'Key Account'],
+        ['Cloud Starter', 'Europe', 310, 280, '=C3+D3', 350, '=E3*F3', 'Active promo'],
+        ['Security Gateway', 'Asia Pacific', 95, 110, '=C4+D4', 2400, '=E4*F4', 'Pending approval'],
+        ['IoT Edge Node', 'North America', 450, 520, '=C5+D5', 180, '=E5*F5', 'Standard tier'],
+        ['Summary', 'All Regions', '=AVERAGE(C2:C5)', '=AVERAGE(D2:D5)', '=SUM(E2:E5)', '', '=SUM(G2:G5)', 'Live formula'],
+        ...Array.from({ length: 14 }, () => Array(8).fill('')),
       ],
-      totalRows: 21,
+      totalRows: 20,
       totalCols: 8,
     },
     {
       name: 'Targets',
-      headers: ['A', 'B', 'C', 'D'],
+      headers: ['A', 'B', 'C', 'D', 'E'],
       rows: [
-        ['Department', 'Q1 Target', 'Q2 Target', 'Annual Goal'],
-        ['Enterprise Sales', 300000, 350000, 1500000],
-        ['SMB Cloud', 180000, 210000, 850000],
-        ['Security & Ops', 220000, 250000, 1000000],
-        ...Array.from({ length: 16 }, () => Array(4).fill('')),
+        ['Department', 'Q1 Target', 'Q2 Target', 'H1 Total', 'Annual Goal'],
+        ['Enterprise Sales', 300000, 350000, '=B2+C2', 1500000],
+        ['SMB Cloud', 180000, 210000, '=B3+C3', 850000],
+        ['Security & Ops', 220000, 250000, '=B4+C4', 1000000],
+        ['Total', '=SUM(B2:B4)', '=SUM(C2:C4)', '=SUM(D2:D4)', '=SUM(E2:E4)'],
+        ...Array.from({ length: 15 }, () => Array(5).fill('')),
       ],
       totalRows: 20,
-      totalCols: 4,
+      totalCols: 5,
     },
-  ]);
+  ];
+}
 
+function makeBlankWorkbook(): SheetData[] {
+  const cols = 10;
+  return [
+    {
+      name: 'Sheet1',
+      headers: Array.from({ length: cols }, (_, i) => indexToColLetter(i + 1)),
+      rows: Array.from({ length: 25 }, () => Array(cols).fill('')),
+      totalRows: 25,
+      totalCols: cols,
+    },
+  ];
+}
+
+function cloneSheets(s: SheetData[]): SheetData[] {
+  return JSON.parse(JSON.stringify(s));
+}
+
+export const SpreadsheetEditor: React.FC = () => {
+  const [sheets, setSheets] = useState<SheetData[]>(makeDefaultSheets);
   const [activeSheetIndex, setActiveSheetIndex] = useState(0);
-  const [selectedCell, setSelectedCell] = useState<{ row: number; col: number }>({ row: 0, col: 0 });
+  const [selectedCell, setSelectedCell] = useState<{ row: number; col: number }>({ row: 5, col: 6 }); // Start on G6 (=SUM(G2:G5))
   const [editingCell, setEditingCell] = useState<{ row: number; col: number } | null>(null);
   const [formulaInputValue, setFormulaInputValue] = useState('');
-  const [cellFormats, setCellFormats] = useState<Record<string, CellFormat>>({});
+  const [cellFormats, setCellFormats] = useState<Record<string, CellFormat>>({
+    '0:0:0': { bold: true },
+    '0:0:1': { bold: true },
+    '0:0:2': { bold: true },
+    '0:0:3': { bold: true },
+    '0:0:4': { bold: true },
+    '0:0:5': { bold: true },
+    '0:0:6': { bold: true },
+    '0:0:7': { bold: true },
+    '0:5:0': { bold: true },
+    '0:5:4': { bold: true },
+    '0:5:6': { bold: true, isCurrency: true },
+    '0:1:6': { isCurrency: true },
+    '0:2:6': { isCurrency: true },
+    '0:3:6': { isCurrency: true },
+    '0:4:6': { isCurrency: true },
+  });
 
-  // History for Undo / Redo
-  const [history, setHistory] = useState<SheetData[][]>([]);
-  const [historyStep, setHistoryStep] = useState<number>(-1);
+  // Clean past / future stacks for reliable Undo & Redo
+  const [past, setPast] = useState<SheetData[][]>([]);
+  const [future, setFuture] = useState<SheetData[][]>([]);
 
-  // Find & Replace state
+  // Inline sheet rename state (no window.prompt)
+  const [renamingSheetIdx, setRenamingSheetIdx] = useState<number | null>(null);
+  const [renameDraft, setRenameDraft] = useState('');
+
+  // Inline Find & Replace
   const [isFindOpen, setIsFindOpen] = useState(false);
   const [findText, setFindText] = useState('');
   const [replaceText, setReplaceText] = useState('');
-  const [replaceFeedback, setReplaceFeedback] = useState<string | null>(null);
+
+  // Inline status / error toast
+  const [statusMessage, setStatusMessage] = useState<{ type: 'info' | 'error'; text: string } | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const editInputRef = useRef<HTMLInputElement>(null);
+  const gridContainerRef = useRef<HTMLDivElement>(null);
 
   const currentSheet = sheets[activeSheetIndex] || sheets[0];
 
-  // Evaluate cells for display
-  const evaluatedRows = React.useMemo(() => {
-    return currentSheet.rows.map((row) =>
-      row.map((cell) => {
-        if (typeof cell === 'string' && cell.startsWith('=')) {
-          return evaluateFormula(cell, currentSheet.rows);
-        }
-        return cell;
-      })
-    );
-  }, [currentSheet.rows]);
+  // Recursive full-grid formula evaluation (resolves chained formulas like =SUM(G2:G5) over =E2*F2)
+  const evaluatedRows = useMemo(() => evaluateGrid(currentSheet.rows), [currentSheet.rows]);
 
-  // Keep formula bar in sync with selected cell
   useEffect(() => {
     const rawVal = currentSheet.rows[selectedCell.row]?.[selectedCell.col];
     setFormulaInputValue(rawVal !== null && rawVal !== undefined ? String(rawVal) : '');
@@ -112,125 +146,198 @@ export const SpreadsheetEditor: React.FC = () => {
     }
   }, [editingCell]);
 
-  const pushHistory = (newSheets: SheetData[]) => {
-    const newHist = history.slice(0, historyStep + 1);
-    newHist.push(JSON.parse(JSON.stringify(sheets)));
-    if (newHist.length > 20) newHist.shift();
-    setHistory(newHist);
-    setHistoryStep(newHist.length - 1);
-    setSheets(newSheets);
+  const showToast = (text: string, type: 'info' | 'error' = 'info') => {
+    setStatusMessage({ text, type });
+    setTimeout(() => {
+      setStatusMessage((prev) => (prev?.text === text ? null : prev));
+    }, 3500);
+  };
+
+  const commitSheets = (nextSheets: SheetData[]) => {
+    setPast((prev) => [...prev.slice(-24), cloneSheets(sheets)]);
+    setFuture([]);
+    setSheets(nextSheets);
   };
 
   const handleUndo = () => {
-    if (historyStep >= 0 && history[historyStep]) {
-      const prev = history[historyStep];
-      setHistoryStep(historyStep - 1);
-      setSheets(JSON.parse(JSON.stringify(prev)));
+    if (past.length === 0) return;
+    const previous = past[past.length - 1];
+    setFuture((prev) => [cloneSheets(sheets), ...prev.slice(0, 24)]);
+    setPast((prev) => prev.slice(0, -1));
+    setSheets(previous);
+    if (activeSheetIndex >= previous.length) {
+      setActiveSheetIndex(Math.max(0, previous.length - 1));
     }
   };
 
-  const updateCellValue = (rowIdx: number, colIdx: number, value: string | number) => {
-    const newSheets = [...sheets];
-    const newSheet = { ...currentSheet };
-    const newRows = newSheet.rows.map((r, rIdx) => {
-      if (rIdx !== rowIdx) return r;
-      const newR = [...r];
-      // Convert to number if numeric and not starting with =
-      let parsedVal: string | number = value;
-      if (typeof value === 'string' && !value.startsWith('=') && !isNaN(Number(value)) && value.trim() !== '') {
-        parsedVal = Number(value);
-      }
-      newR[colIdx] = parsedVal;
-      return newR;
-    });
-
-    newSheet.rows = newRows;
-    newSheets[activeSheetIndex] = newSheet;
-    pushHistory(newSheets);
+  const handleRedo = () => {
+    if (future.length === 0) return;
+    const next = future[0];
+    setPast((prev) => [...prev.slice(-24), cloneSheets(sheets)]);
+    setFuture((prev) => prev.slice(1));
+    setSheets(next);
   };
 
-  const handleFormulaBarChange = (val: string) => {
-    setFormulaInputValue(val);
-    updateCellValue(selectedCell.row, selectedCell.col, val);
+  const updateCellValue = (rowIdx: number, colIdx: number, value: string | number) => {
+    const rawPrev = currentSheet.rows[rowIdx]?.[colIdx];
+    let parsedVal: string | number = value;
+    if (typeof value === 'string' && !value.trim().startsWith('=') && value.trim() !== '' && !isNaN(Number(value))) {
+      parsedVal = Number(value);
+    }
+    if (rawPrev === parsedVal) return;
+
+    const nextSheets = cloneSheets(sheets);
+    nextSheets[activeSheetIndex].rows[rowIdx][colIdx] = parsedVal;
+    commitSheets(nextSheets);
+  };
+
+  const handleFormulaBarCommit = () => {
+    updateCellValue(selectedCell.row, selectedCell.col, formulaInputValue);
   };
 
   const handleAddSheet = () => {
     const name = `Sheet${sheets.length + 1}`;
+    const cols = 8;
     const newSheet: SheetData = {
       name,
-      headers: ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'],
-      rows: Array.from({ length: 25 }, () => Array(8).fill('')),
-      totalRows: 25,
-      totalCols: 8,
+      headers: Array.from({ length: cols }, (_, i) => indexToColLetter(i + 1)),
+      rows: Array.from({ length: 20 }, () => Array(cols).fill('')),
+      totalRows: 20,
+      totalCols: cols,
     };
-    pushHistory([...sheets, newSheet]);
+    commitSheets([...cloneSheets(sheets), newSheet]);
     setActiveSheetIndex(sheets.length);
+    setSelectedCell({ row: 0, col: 0 });
   };
 
   const handleDeleteSheet = (idx: number) => {
     if (sheets.length <= 1) return;
-    const newSheets = sheets.filter((_, i) => i !== idx);
-    pushHistory(newSheets);
+    const nextSheets = sheets.filter((_, i) => i !== idx);
+    commitSheets(nextSheets);
     setActiveSheetIndex(Math.max(0, idx - 1));
+    setSelectedCell({ row: 0, col: 0 });
   };
 
-  const handleRenameSheet = (idx: number) => {
-    const newName = prompt('Enter sheet name:', sheets[idx].name);
-    if (!newName || !newName.trim()) return;
-    const newSheets = [...sheets];
-    newSheets[idx] = { ...newSheets[idx], name: newName.trim().slice(0, 31) };
-    pushHistory(newSheets);
+  const startRenameSheet = (idx: number) => {
+    setRenamingSheetIdx(idx);
+    setRenameDraft(sheets[idx].name);
+  };
+
+  const commitRenameSheet = () => {
+    if (renamingSheetIdx === null) return;
+    const clean = renameDraft.trim().replace(/[*?:/[\]]/g, '').slice(0, 31);
+    if (clean) {
+      const nextSheets = cloneSheets(sheets);
+      nextSheets[renamingSheetIdx].name = clean;
+      commitSheets(nextSheets);
+    }
+    setRenamingSheetIdx(null);
   };
 
   const handleAddRow = () => {
-    const newSheet = { ...currentSheet };
-    const emptyRow = Array(currentSheet.headers.length).fill('');
-    newSheet.rows = [...newSheet.rows, emptyRow];
-    newSheet.totalRows += 1;
-    const newSheets = [...sheets];
-    newSheets[activeSheetIndex] = newSheet;
-    pushHistory(newSheets);
+    const nextSheets = cloneSheets(sheets);
+    const target = nextSheets[activeSheetIndex];
+    const insertAt = Math.min(target.rows.length, selectedCell.row + 1);
+    target.rows.splice(insertAt, 0, Array(target.headers.length).fill(''));
+    target.totalRows = target.rows.length;
+    commitSheets(nextSheets);
+    setSelectedCell({ row: insertAt, col: selectedCell.col });
+  };
+
+  const handleDeleteSelectedRow = () => {
+    if (currentSheet.rows.length <= 1) return;
+    const nextSheets = cloneSheets(sheets);
+    const target = nextSheets[activeSheetIndex];
+    target.rows.splice(selectedCell.row, 1);
+    target.totalRows = target.rows.length;
+    commitSheets(nextSheets);
+    setSelectedCell((c) => ({ ...c, row: Math.min(c.row, target.rows.length - 1) }));
   };
 
   const handleAddCol = () => {
-    const newSheet = { ...currentSheet };
-    const nextColLetter = indexToColLetter(newSheet.headers.length + 1);
-    newSheet.headers = [...newSheet.headers, nextColLetter];
-    newSheet.rows = newSheet.rows.map((r) => [...r, '']);
-    newSheet.totalCols += 1;
-    const newSheets = [...sheets];
-    newSheets[activeSheetIndex] = newSheet;
-    pushHistory(newSheets);
+    const nextSheets = cloneSheets(sheets);
+    const target = nextSheets[activeSheetIndex];
+    const nextLetter = indexToColLetter(target.headers.length + 1);
+    target.headers.push(nextLetter);
+    target.rows = target.rows.map((r) => [...r, '']);
+    target.totalCols = target.headers.length;
+    commitSheets(nextSheets);
   };
 
-  const handleDeleteRow = (rIdx: number) => {
-    if (currentSheet.rows.length <= 1) return;
-    const newSheet = { ...currentSheet };
-    newSheet.rows = newSheet.rows.filter((_, i) => i !== rIdx);
-    newSheet.totalRows -= 1;
-    const newSheets = [...sheets];
-    newSheets[activeSheetIndex] = newSheet;
-    pushHistory(newSheets);
-    if (selectedCell.row >= newSheet.rows.length) {
-      setSelectedCell((c) => ({ ...c, row: newSheet.rows.length - 1 }));
-    }
+  const handleDeleteSelectedCol = () => {
+    if (currentSheet.headers.length <= 1) return;
+    const nextSheets = cloneSheets(sheets);
+    const target = nextSheets[activeSheetIndex];
+    target.rows = target.rows.map((r) => r.filter((_, cIdx) => cIdx !== selectedCell.col));
+    target.headers = Array.from({ length: target.headers.length - 1 }, (_, i) => indexToColLetter(i + 1));
+    target.totalCols = target.headers.length;
+    commitSheets(nextSheets);
+    setSelectedCell((c) => ({ ...c, col: Math.min(c.col, target.headers.length - 1) }));
   };
 
-  const handleFormatToggle = (formatKey: keyof CellFormat, value?: any) => {
-    const cellKey = `${activeSheetIndex}:${selectedCell.row}:${selectedCell.col}`;
-    const curr = cellFormats[cellKey] || {};
+  const handleSortSelectedCol = () => {
+    const nextSheets = cloneSheets(sheets);
+    const target = nextSheets[activeSheetIndex];
+    if (target.rows.length <= 2) return;
+    const headerRow = target.rows[0];
+    const dataRows = target.rows.slice(1);
+    const nonEmpty = dataRows.filter((r) => r.some((c) => c !== null && c !== undefined && String(c).trim() !== ''));
+    const empty = dataRows.filter((r) => !r.some((c) => c !== null && c !== undefined && String(c).trim() !== ''));
+    const col = selectedCell.col;
+    nonEmpty.sort((a, b) => {
+      const va = a[col] ?? '';
+      const vb = b[col] ?? '';
+      const na = Number(va);
+      const nb = Number(vb);
+      if (!isNaN(na) && !isNaN(nb) && String(va).trim() !== '' && String(vb).trim() !== '') {
+        return na - nb;
+      }
+      return String(va).localeCompare(String(vb), undefined, { numeric: true, sensitivity: 'base' });
+    });
+    target.rows = [headerRow, ...nonEmpty, ...empty];
+    commitSheets(nextSheets);
+    showToast(`Sorted column ${indexToColLetter(col + 1)} ascending (preserving row 1).`);
+  };
+
+  const handleFormatToggle = (formatKey: keyof CellFormat, value?: CellFormat[keyof CellFormat]) => {
+    const key = `${activeSheetIndex}:${selectedCell.row}:${selectedCell.col}`;
+    const curr = cellFormats[key] || {};
     const nextVal = value !== undefined ? value : !curr[formatKey];
-    setCellFormats({
-      ...cellFormats,
-      [cellKey]: {
+    setCellFormats((prev) => ({
+      ...prev,
+      [key]: {
         ...curr,
         [formatKey]: nextVal,
       },
-    });
+    }));
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (editingCell) return;
+    if (editingCell || renamingSheetIdx !== null) return;
+    const targetTag = (e.target as HTMLElement).tagName;
+    if (targetTag === 'INPUT' || targetTag === 'TEXTAREA' || targetTag === 'SELECT') return;
+
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') {
+      e.preventDefault();
+      if (e.shiftKey) handleRedo();
+      else handleUndo();
+      return;
+    }
+
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'c') {
+      const val = evaluatedRows[selectedCell.row]?.[selectedCell.col];
+      navigator.clipboard?.writeText(val !== null && val !== undefined ? String(val) : '').catch(() => {});
+      return;
+    }
+
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'v') {
+      navigator.clipboard?.readText().then((clip) => {
+        if (clip !== undefined) {
+          updateCellValue(selectedCell.row, selectedCell.col, clip.split('\n')[0].split('\t')[0]);
+        }
+      }).catch(() => {});
+      return;
+    }
 
     if (e.key === 'ArrowDown') {
       e.preventDefault();
@@ -244,12 +351,35 @@ export const SpreadsheetEditor: React.FC = () => {
     } else if (e.key === 'ArrowLeft') {
       e.preventDefault();
       setSelectedCell((c) => ({ ...c, col: Math.max(0, c.col - 1) }));
-    } else if (e.key === 'Enter') {
+    } else if (e.key === 'Enter' || e.key === 'F2') {
       e.preventDefault();
       setEditingCell({ ...selectedCell });
     } else if (e.key === 'Delete' || e.key === 'Backspace') {
+      e.preventDefault();
       updateCellValue(selectedCell.row, selectedCell.col, '');
     }
+  };
+
+  const convertWorkbookToEditorSheets = (importedSheets: SheetData[]): SheetData[] => {
+    return importedSheets.map((s) => {
+      const colCount = Math.max(s.headers.length, 6);
+      const colLetters = Array.from({ length: colCount }, (_, i) => indexToColLetter(i + 1));
+      const padRow = (r: (string | number | boolean | null)[]) =>
+        Array.from({ length: colCount }, (_, i) => (r[i] !== undefined && r[i] !== null ? r[i] : ''));
+      const headerAsRow1 = padRow(s.headers);
+      const bodyRows = s.rows.map(padRow);
+      const extraBlankRows = Array.from({ length: Math.max(0, 18 - (bodyRows.length + 1)) }, () =>
+        Array(colCount).fill('')
+      );
+      const allRows = [headerAsRow1, ...bodyRows, ...extraBlankRows];
+      return {
+        name: s.name,
+        headers: colLetters,
+        rows: allRows,
+        totalRows: allRows.length,
+        totalCols: colCount,
+      };
+    });
   };
 
   const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -257,166 +387,279 @@ export const SpreadsheetEditor: React.FC = () => {
     if (!file) return;
     try {
       const parsed = await parseWorkbookFile(file);
-      setSheets(parsed.sheets);
+      const editorSheets = convertWorkbookToEditorSheets(parsed.sheets);
+      commitSheets(editorSheets);
       setActiveSheetIndex(0);
       setSelectedCell({ row: 0, col: 0 });
-    } catch (err: any) {
-      alert('Failed to parse spreadsheet: ' + err.message);
+      setCellFormats({});
+      showToast(`Imported "${file.name}" (${editorSheets.length} sheet${editorSheets.length === 1 ? '' : 's'}).`);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Unable to read workbook.';
+      showToast(msg, 'error');
+    } finally {
+      if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
 
   const handleLoadSample = () => {
-    setSheets(SAMPLE_WORKBOOK.sheets);
+    const sample = cloneSampleWorkbook(0);
+    const editorSheets = convertWorkbookToEditorSheets(sample.sheets);
+    commitSheets(editorSheets);
     setActiveSheetIndex(0);
     setSelectedCell({ row: 0, col: 0 });
+    setCellFormats({});
+    showToast('Loaded sample sales workbook.');
   };
 
-  const handleExportXlsx = () => {
-    downloadXlsx(sheets, 'Workbook.xlsx');
-  };
-
-  const handleExportCsv = () => {
-    downloadCsv(currentSheet.headers, evaluatedRows, `${currentSheet.name}.csv`);
+  const handleNewBlank = () => {
+    commitSheets(makeBlankWorkbook());
+    setActiveSheetIndex(0);
+    setSelectedCell({ row: 0, col: 0 });
+    setCellFormats({});
+    showToast('Created blank workbook.');
   };
 
   const handleFindAndReplace = () => {
     if (!findText) return;
     let replacedCount = 0;
-    const newSheet = { ...currentSheet };
-    const newRows = newSheet.rows.map((row) =>
+    const nextSheets = cloneSheets(sheets);
+    nextSheets[activeSheetIndex].rows = nextSheets[activeSheetIndex].rows.map((row) =>
       row.map((cell) => {
         if (cell === null || cell === undefined) return cell;
         const str = String(cell);
         if (str.includes(findText)) {
-          replacedCount++;
-          return str.replaceAll(findText, replaceText);
+          replacedCount += str.split(findText).length - 1;
+          return str.split(findText).join(replaceText);
         }
         return cell;
       })
     );
-    newSheet.rows = newRows;
-    const newSheets = [...sheets];
-    newSheets[activeSheetIndex] = newSheet;
-    pushHistory(newSheets);
-    setReplaceFeedback(`Replaced ${replacedCount} instance(s).`);
-    setTimeout(() => setReplaceFeedback(null), 3000);
+    commitSheets(nextSheets);
+    showToast(
+      replacedCount > 0 ? `Replaced ${replacedCount} match${replacedCount === 1 ? '' : 'es'}.` : 'No matches found.'
+    );
   };
 
   const activeCellAddress = `${indexToColLetter(selectedCell.col + 1)}${selectedCell.row + 1}`;
-  const cellKey = `${activeSheetIndex}:${selectedCell.row}:${selectedCell.col}`;
-  const currentFormat = cellFormats[cellKey] || {};
+  const activeCellKey = `${activeSheetIndex}:${selectedCell.row}:${selectedCell.col}`;
+  const currentFormat = cellFormats[activeCellKey] || {};
+  const activeEvaluatedVal = evaluatedRows[selectedCell.row]?.[selectedCell.col];
+
+  const toolbarBtn = (active = false) =>
+    `h-8 w-8 flex items-center justify-center rounded-md border transition-colors ${
+      active
+        ? 'border-emerald-600/40 bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300'
+        : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+    }`;
 
   return (
-    <div className="flex flex-col h-full rounded-2xl border border-slate-800 bg-slate-900 shadow-2xl overflow-hidden" onKeyDown={handleKeyDown} tabIndex={0}>
-      {/* 1. App / Toolbar Ribbon */}
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 bg-slate-950 px-4 py-2.5">
-        <div className="flex items-center space-x-2">
-          <div className="h-7 w-7 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
-            <FileSpreadsheet className="h-4 w-4" />
-          </div>
-          <span className="font-bold text-white text-sm">Spreadsheet Studio</span>
-          <span className="rounded bg-emerald-500/10 text-emerald-400 text-[10px] font-mono px-1.5 py-0.5 border border-emerald-500/20">
-            Local Engine
-          </span>
-        </div>
-
-        {/* Action Controls & Undo/Redo */}
-        <div className="flex items-center space-x-1 sm:space-x-2">
+    <div
+      ref={gridContainerRef}
+      onKeyDown={handleKeyDown}
+      tabIndex={0}
+      aria-label="Spreadsheet Editor Workspace"
+      className="flex flex-col rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] overflow-hidden focus:outline-none"
+    >
+      {/* 1. Primary Formatting & Workbook Toolbar */}
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#0d1219] px-3 py-2">
+        <div className="flex flex-wrap items-center gap-1">
           <button
+            type="button"
             onClick={handleUndo}
-            disabled={historyStep < 0}
-            className="p-1.5 rounded-lg border border-slate-800 text-slate-300 hover:bg-slate-800 disabled:opacity-30 disabled:cursor-not-allowed"
+            disabled={past.length === 0}
+            className={`${toolbarBtn(false)} disabled:opacity-35 disabled:cursor-not-allowed`}
+            aria-label="Undo"
             title="Undo (Ctrl+Z)"
           >
-            <Undo2 className="h-4 w-4" />
+            <Undo2 className="h-3.5 w-3.5" />
           </button>
           <button
+            type="button"
+            onClick={handleRedo}
+            disabled={future.length === 0}
+            className={`${toolbarBtn(false)} disabled:opacity-35 disabled:cursor-not-allowed`}
+            aria-label="Redo"
+            title="Redo (Ctrl+Shift+Z)"
+          >
+            <Redo2 className="h-3.5 w-3.5" />
+          </button>
+
+          <div className="h-5 w-px bg-slate-200 dark:bg-slate-800 mx-1" />
+
+          <button
+            type="button"
             onClick={() => handleFormatToggle('bold')}
-            className={`p-1.5 rounded-lg border transition-colors ${
-              currentFormat.bold ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40' : 'border-slate-800 text-slate-300 hover:bg-slate-800'
-            }`}
+            className={toolbarBtn(!!currentFormat.bold)}
+            aria-label="Toggle bold"
+            aria-pressed={!!currentFormat.bold}
             title="Bold"
           >
-            <Bold className="h-4 w-4" />
+            <Bold className="h-3.5 w-3.5" />
           </button>
           <button
+            type="button"
             onClick={() => handleFormatToggle('italic')}
-            className={`p-1.5 rounded-lg border transition-colors ${
-              currentFormat.italic ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40' : 'border-slate-800 text-slate-300 hover:bg-slate-800'
-            }`}
+            className={toolbarBtn(!!currentFormat.italic)}
+            aria-label="Toggle italic"
+            aria-pressed={!!currentFormat.italic}
             title="Italic"
           >
-            <Italic className="h-4 w-4" />
+            <Italic className="h-3.5 w-3.5" />
           </button>
           <button
+            type="button"
+            onClick={() => handleFormatToggle('align', 'left')}
+            className={toolbarBtn(currentFormat.align === 'left')}
+            aria-label="Align left"
+            title="Align left"
+          >
+            <AlignLeft className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            onClick={() => handleFormatToggle('align', 'center')}
+            className={toolbarBtn(currentFormat.align === 'center')}
+            aria-label="Align center"
+            title="Align center"
+          >
+            <AlignCenter className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            onClick={() => handleFormatToggle('align', 'right')}
+            className={toolbarBtn(currentFormat.align === 'right')}
+            aria-label="Align right"
+            title="Align right"
+          >
+            <AlignRight className="h-3.5 w-3.5" />
+          </button>
+
+          <div className="h-5 w-px bg-slate-200 dark:bg-slate-800 mx-1" />
+
+          <button
+            type="button"
             onClick={() => handleFormatToggle('isCurrency')}
-            className={`p-1.5 rounded-lg border transition-colors ${
-              currentFormat.isCurrency ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40' : 'border-slate-800 text-slate-300 hover:bg-slate-800'
-            }`}
+            className={toolbarBtn(!!currentFormat.isCurrency)}
+            aria-label="Currency format"
+            aria-pressed={!!currentFormat.isCurrency}
             title="Format as Currency ($)"
           >
-            <DollarSign className="h-4 w-4" />
+            <DollarSign className="h-3.5 w-3.5" />
           </button>
           <button
+            type="button"
             onClick={() => handleFormatToggle('isPercent')}
-            className={`p-1.5 rounded-lg border transition-colors ${
-              currentFormat.isPercent ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40' : 'border-slate-800 text-slate-300 hover:bg-slate-800'
-            }`}
-            title="Format as Percentage (%)"
+            className={toolbarBtn(!!currentFormat.isPercent)}
+            aria-label="Percent format"
+            aria-pressed={!!currentFormat.isPercent}
+            title="Format as Percent (%)"
           >
-            <Percent className="h-4 w-4" />
+            <Percent className="h-3.5 w-3.5" />
           </button>
 
-          <div className="h-4 w-px bg-slate-800 mx-1 hidden sm:block" />
+          <div className="h-5 w-px bg-slate-200 dark:bg-slate-800 mx-1" />
 
           <button
-            onClick={() => setIsFindOpen(!isFindOpen)}
-            className="p-1.5 rounded-lg border border-slate-800 text-slate-300 hover:bg-slate-800"
-            title="Find and Replace"
-          >
-            <Search className="h-4 w-4" />
-          </button>
-
-          <button
+            type="button"
             onClick={handleAddRow}
-            className="flex items-center space-x-1 px-2.5 py-1 text-xs rounded-lg border border-slate-700 bg-slate-800 text-slate-200 hover:bg-slate-700"
-            title="Append Row"
+            className="h-8 px-2.5 flex items-center gap-1 rounded-md border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 whitespace-nowrap"
+            title="Insert row below selection"
           >
             <Plus className="h-3 w-3" />
             <span>Row</span>
           </button>
           <button
+            type="button"
+            onClick={handleDeleteSelectedRow}
+            className="h-8 px-2 flex items-center gap-1 rounded-md border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-xs font-medium text-slate-600 dark:text-slate-300 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 whitespace-nowrap"
+            aria-label="Delete selected row"
+            title="Delete selected row"
+          >
+            <Trash2 className="h-3 w-3" />
+            <span className="hidden lg:inline">Row</span>
+          </button>
+          <button
+            type="button"
             onClick={handleAddCol}
-            className="flex items-center space-x-1 px-2.5 py-1 text-xs rounded-lg border border-slate-700 bg-slate-800 text-slate-200 hover:bg-slate-700"
-            title="Append Column"
+            className="h-8 px-2.5 flex items-center gap-1 rounded-md border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 whitespace-nowrap"
+            title="Append column"
           >
             <Plus className="h-3 w-3" />
             <span>Col</span>
           </button>
-
-          <div className="h-4 w-px bg-slate-800 mx-1" />
-
-          {/* Import / Export */}
           <button
+            type="button"
+            onClick={handleDeleteSelectedCol}
+            className="h-8 px-2 flex items-center gap-1 rounded-md border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-xs font-medium text-slate-600 dark:text-slate-300 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 whitespace-nowrap"
+            aria-label="Delete selected column"
+            title="Delete selected column"
+          >
+            <Trash2 className="h-3 w-3" />
+            <span className="hidden lg:inline">Col</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={handleSortSelectedCol}
+            className={toolbarBtn(false)}
+            aria-label="Sort active column ascending"
+            title="Sort active column A-Z / 0-9"
+          >
+            <ArrowUpDown className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            onClick={() => setIsFindOpen((v) => !v)}
+            className={toolbarBtn(isFindOpen)}
+            aria-label="Toggle Find and Replace"
+            title="Find & Replace"
+          >
+            <Search className="h-3.5 w-3.5" />
+          </button>
+        </div>
+
+        {/* File Operations */}
+        <div className="flex flex-wrap items-center gap-1.5">
+          <button
+            type="button"
+            onClick={handleNewBlank}
+            className="h-8 px-2.5 flex items-center gap-1.5 rounded-md border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 whitespace-nowrap"
+            title="Create blank workbook"
+          >
+            <FilePlus2 className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Blank</span>
+          </button>
+          <button
+            type="button"
             onClick={() => fileInputRef.current?.click()}
-            className="flex items-center space-x-1 px-2.5 py-1 text-xs rounded-lg border border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-700"
-            title="Open spreadsheet from file"
+            className="h-8 px-2.5 flex items-center gap-1.5 rounded-md border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 whitespace-nowrap"
           >
             <Upload className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Open</span>
+            <span>Import</span>
           </button>
           <input
             type="file"
             ref={fileInputRef}
             onChange={handleImportFile}
-            accept=".xlsx,.xls,.csv"
+            accept=".xlsx,.xls,.xlsm,.csv,.tsv,.json"
             className="hidden"
           />
-
           <button
-            onClick={handleExportXlsx}
-            className="flex items-center space-x-1 px-3 py-1 text-xs font-semibold rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white shadow-sm"
-            title="Download full workbook as XLSX"
+            type="button"
+            onClick={() => downloadRawCsv(evaluatedRows, `${currentSheet.name}.csv`)}
+            className="h-8 px-2.5 flex items-center gap-1.5 rounded-md border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 whitespace-nowrap"
+          >
+            <span>CSV</span>
+          </button>
+          <button
+            type="button"
+            onClick={() =>
+              downloadEditorXlsx(
+                sheets.map((s) => ({ name: s.name, rows: evaluateGrid(s.rows) })),
+                'Excel_Toolkit_Workbook.xlsx'
+              )
+            }
+            className="h-8 px-3 flex items-center gap-1.5 rounded-md bg-emerald-600 hover:bg-emerald-700 dark:bg-emerald-500 dark:hover:bg-emerald-400 text-xs font-semibold text-white dark:text-slate-950 transition-colors whitespace-nowrap"
           >
             <Download className="h-3.5 w-3.5" />
             <span>Export XLSX</span>
@@ -424,33 +667,61 @@ export const SpreadsheetEditor: React.FC = () => {
         </div>
       </div>
 
-      {/* Find & Replace bar */}
+      {/* Inline Status / Toast Notification */}
+      {statusMessage && (
+        <div
+          role="status"
+          className={`flex items-center justify-between px-4 py-2 text-xs border-b ${
+            statusMessage.type === 'error'
+              ? 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-900'
+              : 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-800 dark:text-emerald-300 border-emerald-200 dark:border-emerald-900/60'
+          }`}
+        >
+          <span className="flex items-center gap-2">
+            {statusMessage.type === 'error' ? <AlertCircle className="h-3.5 w-3.5" /> : <Check className="h-3.5 w-3.5" />}
+            {statusMessage.text}
+          </span>
+          <button
+            type="button"
+            onClick={() => setStatusMessage(null)}
+            aria-label="Dismiss notification"
+            className="opacity-70 hover:opacity-100"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
+
+      {/* Find & Replace Drawer */}
       {isFindOpen && (
-        <div className="flex flex-wrap items-center gap-2 border-b border-slate-800 bg-slate-950/90 px-4 py-2">
+        <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 dark:border-slate-800 bg-slate-50/90 dark:bg-[#0d1219] px-4 py-2">
           <input
             type="text"
             placeholder="Find text..."
+            aria-label="Find text in sheet"
             value={findText}
             onChange={(e) => setFindText(e.target.value)}
-            className="h-7 w-40 rounded border border-slate-700 bg-slate-800 px-2 text-xs text-white placeholder-slate-400 focus:outline-none"
+            className="h-8 w-44 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:border-emerald-600 focus:outline-none"
           />
           <input
             type="text"
             placeholder="Replace with..."
+            aria-label="Replace text with"
             value={replaceText}
             onChange={(e) => setReplaceText(e.target.value)}
-            className="h-7 w-40 rounded border border-slate-700 bg-slate-800 px-2 text-xs text-white placeholder-slate-400 focus:outline-none"
+            className="h-8 w-44 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:border-emerald-600 focus:outline-none"
           />
           <button
+            type="button"
             onClick={handleFindAndReplace}
-            className="h-7 px-3 rounded bg-slate-800 text-xs text-slate-200 border border-slate-700 hover:bg-slate-700"
+            className="h-8 px-3 rounded-md bg-slate-900 dark:bg-slate-700 text-xs font-medium text-white hover:bg-slate-800 dark:hover:bg-slate-600"
           >
-            Replace All
+            Replace all
           </button>
-          {replaceFeedback && <span className="text-xs text-emerald-400 font-medium">{replaceFeedback}</span>}
           <button
+            type="button"
             onClick={() => setIsFindOpen(false)}
-            className="text-xs text-slate-400 hover:text-white ml-auto"
+            className="ml-auto text-xs text-slate-500 hover:text-slate-900 dark:hover:text-white"
           >
             Close
           </button>
@@ -458,148 +729,239 @@ export const SpreadsheetEditor: React.FC = () => {
       )}
 
       {/* 2. Formula Bar */}
-      <div className="flex items-center border-b border-slate-800 bg-slate-900 px-3 py-2 space-x-2">
-        <div className="flex h-7 w-14 items-center justify-center rounded border border-slate-700 bg-slate-950 font-mono text-xs font-bold text-emerald-400 shadow-inner">
+      <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] px-3 py-2">
+        <div
+          className="flex h-8 w-16 items-center justify-center rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 font-mono text-xs font-semibold text-emerald-700 dark:text-emerald-400 shrink-0 tabular-nums"
+          aria-label={`Selected cell ${activeCellAddress}`}
+        >
           {activeCellAddress}
         </div>
-        <div className="text-xs font-mono font-bold text-slate-500 select-none">ƒx</div>
+        <span className="font-mono text-xs font-semibold text-slate-400 select-none px-1">fx</span>
         <input
           type="text"
           value={formulaInputValue}
-          onChange={(e) => handleFormulaBarChange(e.target.value)}
-          placeholder="Enter formula (e.g. =SUM(A1:A5)) or raw value..."
-          className="flex-1 h-7 rounded border border-slate-800 bg-slate-950/80 px-2.5 font-mono text-xs text-slate-100 placeholder-slate-500 focus:border-emerald-500 focus:outline-none"
+          onChange={(e) => setFormulaInputValue(e.target.value)}
+          onBlur={handleFormulaBarCommit}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              handleFormulaBarCommit();
+              setSelectedCell((c) => ({ ...c, row: Math.min(currentSheet.rows.length - 1, c.row + 1) }));
+              gridContainerRef.current?.focus();
+            }
+          }}
+          aria-label="Formula bar"
+          placeholder="Enter value or formula (e.g. =SUM(G2:G5), =IF(E2>300,&quot;High&quot;,&quot;Normal&quot;))"
+          className="flex-1 h-8 rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#0d1219] px-3 font-mono text-xs text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:border-emerald-600 focus:bg-white dark:focus:bg-slate-900 focus:outline-none"
         />
+        {typeof currentSheet.rows[selectedCell.row]?.[selectedCell.col] === 'string' &&
+          String(currentSheet.rows[selectedCell.row]?.[selectedCell.col]).startsWith('=') && (
+            <span className="hidden sm:inline-block font-mono text-xs text-slate-500 dark:text-slate-400 tabular-nums whitespace-nowrap">
+              = {String(activeEvaluatedVal ?? '')}
+            </span>
+          )}
       </div>
 
-      {/* 3. Grid Table Viewport */}
-      <div className="flex-1 overflow-auto bg-slate-950 select-none relative max-h-[600px]">
-        <table className="border-collapse text-xs font-mono">
-          <thead className="sticky top-0 z-20 bg-slate-900 border-b border-slate-800">
+      {/* 3. Spreadsheet Data Grid */}
+      <div className="flex-1 overflow-auto bg-white dark:bg-[#0b0f14] select-none relative max-h-[560px]">
+        <table className="border-collapse text-xs font-mono tabular-nums w-full">
+          <thead className="sticky top-0 z-20 bg-slate-100 dark:bg-[#131a24]">
             <tr>
-              {/* Corner header */}
-              <th className="w-12 h-7 border-r border-b border-slate-800 bg-slate-950 text-center text-slate-500 text-[10px]">
-                ◢
+              <th className="w-11 h-8 border-r border-b border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-[#131a24] text-center text-slate-400 text-[10px] sticky left-0 z-30">
+                #
               </th>
-              {currentSheet.headers.map((colHeader, cIdx) => (
-                <th
-                  key={cIdx}
-                  className="min-w-[110px] h-7 border-r border-b border-slate-800 px-2 text-center font-bold text-slate-400 uppercase tracking-wider bg-slate-900"
-                >
-                  {colHeader}
-                </th>
-              ))}
+              {currentSheet.headers.map((colHeader, cIdx) => {
+                const colSelected = selectedCell.col === cIdx;
+                return (
+                  <th
+                    key={cIdx}
+                    className={`min-w-[120px] h-8 border-r border-b border-slate-200 dark:border-slate-800 px-2 text-center font-semibold tracking-wider ${
+                      colSelected
+                        ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400'
+                        : 'text-slate-500 dark:text-slate-400'
+                    }`}
+                  >
+                    {colHeader}
+                  </th>
+                );
+              })}
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-800/80">
-            {evaluatedRows.map((row, rIdx) => (
-              <tr key={rIdx} className="h-7 hover:bg-slate-900/40">
-                {/* Row Number header */}
-                <td className="w-12 border-r border-slate-800 bg-slate-900/70 text-center text-slate-500 text-[11px] font-semibold sticky left-0 z-10 select-none">
-                  {rIdx + 1}
-                </td>
+          <tbody>
+            {evaluatedRows.map((row, rIdx) => {
+              const rowSelected = selectedCell.row === rIdx;
+              return (
+                <tr key={rIdx} className="h-8">
+                  <td
+                    className={`w-11 border-r border-b border-slate-200 dark:border-slate-800 text-center text-[11px] font-medium sticky left-0 z-10 select-none ${
+                      rowSelected
+                        ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400 font-semibold'
+                        : 'bg-slate-50 dark:bg-[#0f151e] text-slate-400'
+                    }`}
+                  >
+                    {rIdx + 1}
+                  </td>
 
-                {currentSheet.headers.map((_, cIdx) => {
-                  const isSelected = selectedCell.row === rIdx && selectedCell.col === cIdx;
-                  const isEditing = editingCell?.row === rIdx && editingCell?.col === cIdx;
-                  const evaluatedVal = row[cIdx];
-                  const rawVal = currentSheet.rows[rIdx]?.[cIdx];
-                  const cellKey = `${activeSheetIndex}:${rIdx}:${cIdx}`;
-                  const fmt = cellFormats[cellKey] || {};
+                  {currentSheet.headers.map((_, cIdx) => {
+                    const isSelected = selectedCell.row === rIdx && selectedCell.col === cIdx;
+                    const isEditing = editingCell?.row === rIdx && editingCell?.col === cIdx;
+                    const evaluatedVal = row[cIdx];
+                    const rawVal = currentSheet.rows[rIdx]?.[cIdx];
+                    const key = `${activeSheetIndex}:${rIdx}:${cIdx}`;
+                    const fmt = cellFormats[key] || {};
 
-                  let displayStr = '';
-                  if (evaluatedVal !== null && evaluatedVal !== undefined) {
-                    if (fmt.isCurrency && typeof evaluatedVal === 'number') {
-                      displayStr = `$${evaluatedVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-                    } else if (fmt.isPercent && typeof evaluatedVal === 'number') {
-                      displayStr = `${(evaluatedVal * 100).toFixed(1)}%`;
-                    } else {
-                      displayStr = String(evaluatedVal);
+                    let displayStr = '';
+                    if (evaluatedVal !== null && evaluatedVal !== undefined && evaluatedVal !== '') {
+                      if (fmt.isCurrency && typeof evaluatedVal === 'number') {
+                        displayStr = `$${evaluatedVal.toLocaleString(undefined, {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}`;
+                      } else if (fmt.isPercent && typeof evaluatedVal === 'number') {
+                        displayStr = `${(evaluatedVal * 100).toFixed(1)}%`;
+                      } else if (typeof evaluatedVal === 'number') {
+                        displayStr = evaluatedVal.toLocaleString(undefined, { maximumFractionDigits: 4 });
+                      } else {
+                        displayStr = String(evaluatedVal);
+                      }
                     }
-                  }
 
-                  return (
-                    <td
-                      key={cIdx}
-                      onClick={() => {
-                        setSelectedCell({ row: rIdx, col: cIdx });
-                        setEditingCell(null);
-                      }}
-                      onDoubleClick={() => {
-                        setSelectedCell({ row: rIdx, col: cIdx });
-                        setEditingCell({ row: rIdx, col: cIdx });
-                      }}
-                      className={`min-w-[110px] max-w-[220px] px-2 border-r border-b border-slate-800/70 truncate cursor-cell relative ${
-                        isSelected ? 'bg-emerald-950/50 ring-2 ring-emerald-500 z-10' : ''
-                      } ${fmt.bold ? 'font-bold' : ''} ${fmt.italic ? 'italic' : ''} ${
-                        typeof evaluatedVal === 'number' || fmt.isCurrency ? 'text-right' : 'text-left'
-                      }`}
-                    >
-                      {isEditing ? (
-                        <input
-                          ref={editInputRef}
-                          type="text"
-                          defaultValue={rawVal !== null && rawVal !== undefined ? String(rawVal) : ''}
-                          onBlur={(e) => {
-                            updateCellValue(rIdx, cIdx, e.target.value);
-                            setEditingCell(null);
-                          }}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              updateCellValue(rIdx, cIdx, e.currentTarget.value);
+                    const alignClass =
+                      fmt.align === 'center'
+                        ? 'text-center'
+                        : fmt.align === 'right'
+                        ? 'text-right'
+                        : fmt.align === 'left'
+                        ? 'text-left'
+                        : typeof evaluatedVal === 'number' || fmt.isCurrency
+                        ? 'text-right'
+                        : 'text-left';
+
+                    const isError = typeof evaluatedVal === 'string' && evaluatedVal.startsWith('#');
+
+                    return (
+                      <td
+                        key={cIdx}
+                        data-cell={`${indexToColLetter(cIdx + 1)}${rIdx + 1}`}
+                        onClick={() => {
+                          setSelectedCell({ row: rIdx, col: cIdx });
+                          setEditingCell(null);
+                        }}
+                        onDoubleClick={() => {
+                          setSelectedCell({ row: rIdx, col: cIdx });
+                          setEditingCell({ row: rIdx, col: cIdx });
+                        }}
+                        className={`min-w-[120px] max-w-[240px] px-2.5 border-r border-b border-slate-200/80 dark:border-slate-800/80 truncate cursor-cell relative ${alignClass} ${
+                          isSelected
+                            ? 'bg-emerald-50/70 dark:bg-emerald-950/35 ring-2 ring-inset ring-emerald-600 dark:ring-emerald-400 z-10'
+                            : rIdx === 0
+                            ? 'bg-slate-50/70 dark:bg-slate-900/40'
+                            : 'hover:bg-slate-50/60 dark:hover:bg-slate-900/30'
+                        } ${fmt.bold ? 'font-bold' : ''} ${fmt.italic ? 'italic' : ''}`}
+                      >
+                        {isEditing ? (
+                          <input
+                            ref={editInputRef}
+                            type="text"
+                            defaultValue={rawVal !== null && rawVal !== undefined ? String(rawVal) : ''}
+                            aria-label={`Edit cell ${indexToColLetter(cIdx + 1)}${rIdx + 1}`}
+                            onBlur={(e) => {
+                              updateCellValue(rIdx, cIdx, e.target.value);
                               setEditingCell(null);
-                              setSelectedCell({ row: Math.min(currentSheet.rows.length - 1, rIdx + 1), col: cIdx });
-                            } else if (e.key === 'Escape') {
-                              setEditingCell(null);
-                            }
-                          }}
-                          className="absolute inset-0 h-full w-full bg-slate-900 text-white px-2 border-2 border-emerald-400 outline-none font-mono text-xs z-30"
-                        />
-                      ) : (
-                        <span className={String(evaluatedVal).startsWith('#') ? 'text-rose-400 font-semibold' : 'text-slate-200'}>
-                          {displayStr}
-                        </span>
-                      )}
-                    </td>
-                  );
-                })}
-              </tr>
-            ))}
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                updateCellValue(rIdx, cIdx, e.currentTarget.value);
+                                setEditingCell(null);
+                                setSelectedCell({ row: Math.min(currentSheet.rows.length - 1, rIdx + 1), col: cIdx });
+                                gridContainerRef.current?.focus();
+                              } else if (e.key === 'Escape') {
+                                setEditingCell(null);
+                                gridContainerRef.current?.focus();
+                              }
+                            }}
+                            className="absolute inset-0 h-full w-full bg-white dark:bg-slate-900 text-slate-900 dark:text-white px-2.5 border-2 border-emerald-600 dark:border-emerald-400 outline-none font-mono text-xs z-30"
+                          />
+                        ) : (
+                          <span className={isError ? 'text-rose-600 dark:text-rose-400 font-semibold' : 'text-slate-800 dark:text-slate-200'}>
+                            {displayStr}
+                          </span>
+                        )}
+                      </td>
+                    );
+                  })}
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
 
-      {/* 4. Sheet Tabs Bar & Status */}
-      <div className="flex flex-wrap items-center justify-between border-t border-slate-800 bg-slate-950 px-3 py-1.5 gap-2">
-        {/* Tabs */}
-        <div className="flex items-center space-x-1 overflow-x-auto">
+      {/* 4. Worksheet Tabs & Status Bar */}
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#0d1219] px-3 py-2">
+        <div className="flex items-center gap-1 overflow-x-auto" role="tablist" aria-label="Worksheets">
           {sheets.map((sheet, idx) => {
             const isActive = idx === activeSheetIndex;
+            const isRenaming = renamingSheetIdx === idx;
             return (
               <div
                 key={idx}
-                className={`flex items-center space-x-1.5 px-3 py-1 rounded-t text-xs font-medium cursor-pointer transition-colors border-t-2 ${
+                className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium transition-colors border ${
                   isActive
-                    ? 'bg-slate-900 text-emerald-400 border-emerald-500 font-semibold'
-                    : 'text-slate-400 border-transparent hover:bg-slate-900/60 hover:text-slate-200'
+                    ? 'bg-white dark:bg-slate-800 text-emerald-700 dark:text-emerald-400 border-slate-200 dark:border-slate-700 font-semibold shadow-xs'
+                    : 'border-transparent text-slate-600 dark:text-slate-400 hover:bg-slate-200/60 dark:hover:bg-slate-800/60'
                 }`}
-                onClick={() => {
-                  setActiveSheetIndex(idx);
-                  setSelectedCell({ row: 0, col: 0 });
-                }}
-                onDoubleClick={() => handleRenameSheet(idx)}
               >
-                <span>{sheet.name}</span>
-                {sheets.length > 1 && (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleDeleteSheet(idx);
+                {isRenaming ? (
+                  <input
+                    type="text"
+                    value={renameDraft}
+                    onChange={(e) => setRenameDraft(e.target.value)}
+                    onBlur={commitRenameSheet}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') commitRenameSheet();
+                      if (e.key === 'Escape') setRenamingSheetIdx(null);
                     }}
-                    className="p-0.5 rounded text-slate-500 hover:text-rose-400 hover:bg-rose-500/10"
+                    aria-label="Rename worksheet"
+                    autoFocus
+                    className="w-24 bg-transparent border-b border-emerald-600 text-xs text-slate-900 dark:text-white focus:outline-none"
+                  />
+                ) : (
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={isActive}
+                    onClick={() => {
+                      setActiveSheetIndex(idx);
+                      setSelectedCell({ row: 0, col: 0 });
+                    }}
+                    onDoubleClick={() => startRenameSheet(idx)}
+                    className="whitespace-nowrap"
+                  >
+                    {sheet.name}
+                  </button>
+                )}
+
+                {!isRenaming && isActive && (
+                  <button
+                    type="button"
+                    onClick={() => startRenameSheet(idx)}
+                    aria-label={`Rename ${sheet.name}`}
+                    className="p-0.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+                    title="Rename sheet"
+                  >
+                    <Pencil className="h-3 w-3" />
+                  </button>
+                )}
+
+                {!isRenaming && sheets.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteSheet(idx)}
+                    aria-label={`Delete ${sheet.name}`}
+                    className="p-0.5 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400"
                     title="Delete sheet"
                   >
-                    ×
+                    <X className="h-3 w-3" />
                   </button>
                 )}
               </div>
@@ -607,24 +969,27 @@ export const SpreadsheetEditor: React.FC = () => {
           })}
 
           <button
+            type="button"
             onClick={handleAddSheet}
-            className="p-1 rounded text-slate-400 hover:bg-slate-800 hover:text-white transition-colors"
-            title="Add new worksheet"
+            aria-label="Add worksheet"
+            title="Add worksheet"
+            className="h-7 w-7 flex items-center justify-center rounded-md text-slate-500 hover:bg-slate-200/70 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white transition-colors"
           >
             <Plus className="h-4 w-4" />
           </button>
         </div>
 
-        {/* Status / Quick Stats */}
-        <div className="flex items-center space-x-4 text-[11px] text-slate-400 font-mono">
-          <span>{currentSheet.rows.length} rows × {currentSheet.headers.length} cols</span>
-          <span>•</span>
-          <button onClick={handleLoadSample} className="text-emerald-400 hover:underline">
-            Load Sample Sheet
-          </button>
-          <span>•</span>
-          <button onClick={handleExportCsv} className="hover:text-slate-200">
-            Export Sheet CSV
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 dark:text-slate-400 tabular-nums">
+          <span>
+            {currentSheet.rows.length} rows × {currentSheet.headers.length} cols
+          </span>
+          <span aria-hidden="true">·</span>
+          <button
+            type="button"
+            onClick={handleLoadSample}
+            className="text-emerald-700 dark:text-emerald-400 hover:underline font-medium"
+          >
+            Load sample sales
           </button>
         </div>
       </div>

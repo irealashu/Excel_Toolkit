@@ -1,6 +1,7 @@
 import * as XLSX from 'xlsx';
 import Papa from 'papaparse';
 import { SheetData, WorkbookData } from '../../registry/types';
+import { htmlToTable, jsonToTable, markdownToTable, xmlToTable, yamlToTable } from '../converters';
 
 export async function parseWorkbookFile(file: File): Promise<WorkbookData> {
   const fileName = file.name;
@@ -11,13 +12,38 @@ export async function parseWorkbookFile(file: File): Promise<WorkbookData> {
     return parseDelimitedText(file, ext === 'tsv' ? '\t' : undefined);
   }
 
-  if (ext === 'json') {
-    return parseJsonFile(file);
+  if (ext === 'json' || ext === 'jsonl') {
+    const text = await file.text();
+    const { headers, rows } = jsonToTable(text);
+    return singleSheetWorkbook(fileName, fileSizeBytes, 'JSON_Data', headers, rows);
   }
 
-  // Parse Excel workbook (.xlsx, .xls, .xlsm, .xlsb)
+  if (ext === 'md' || ext === 'markdown') {
+    const text = await file.text();
+    const { headers, rows } = markdownToTable(text);
+    return singleSheetWorkbook(fileName, fileSizeBytes, 'Markdown_Table', headers, rows);
+  }
+
+  if (ext === 'html' || ext === 'htm') {
+    const text = await file.text();
+    const { headers, rows } = htmlToTable(text);
+    return singleSheetWorkbook(fileName, fileSizeBytes, 'HTML_Table', headers, rows);
+  }
+
+  if (ext === 'yaml' || ext === 'yml') {
+    const text = await file.text();
+    const { headers, rows } = yamlToTable(text);
+    return singleSheetWorkbook(fileName, fileSizeBytes, 'YAML_Data', headers, rows);
+  }
+
+  if (ext === 'xml') {
+    const text = await file.text();
+    const { headers, rows } = xmlToTable(text);
+    return singleSheetWorkbook(fileName, fileSizeBytes, 'XML_Data', headers, rows);
+  }
+
+  // Parse Excel workbook (.xlsx, .xls, .xlsm, .xlsb, .ods)
   const buffer = await file.arrayBuffer();
-  const startTime = performance.now();
   const wb = XLSX.read(buffer, {
     type: 'array',
     cellDates: true,
@@ -31,7 +57,6 @@ export async function parseWorkbookFile(file: File): Promise<WorkbookData> {
     const ws = wb.Sheets[sheetName];
     if (!ws) continue;
 
-    // Convert sheet to array of arrays
     const rawData = XLSX.utils.sheet_to_json<(string | number | boolean | null)[]>(ws, {
       header: 1,
       defval: null,
@@ -50,10 +75,9 @@ export async function parseWorkbookFile(file: File): Promise<WorkbookData> {
     }
 
     const firstRow = rawData[0] || [];
-    let headers: string[] = [];
     const maxCols = Math.max(...rawData.map((r) => (Array.isArray(r) ? r.length : 0)), 1);
 
-    headers = Array.from({ length: maxCols }, (_, idx) => {
+    const headers = Array.from({ length: maxCols }, (_, idx) => {
       const val = firstRow[idx];
       return val !== null && val !== undefined && String(val).trim() !== ''
         ? String(val).trim()
@@ -74,18 +98,42 @@ export async function parseWorkbookFile(file: File): Promise<WorkbookData> {
     });
   }
 
+  const props = (wb.Props as Record<string, unknown>) || {};
   return {
     fileName,
     fileSizeBytes,
     activeSheetIndex: 0,
     sheets: sheets.length > 0 ? sheets : [{ name: 'Sheet1', headers: ['Column 1'], rows: [], totalRows: 0, totalCols: 1 }],
     metadata: {
-      author: (wb.Props && ((wb.Props as any).Author || (wb.Props as any).Creator)) || undefined,
-      created: (wb.Props as any)?.Created ? String((wb.Props as any).Created) : undefined,
-      modified: (wb.Props as any)?.Modified ? String((wb.Props as any).Modified) : undefined,
-      application: (wb.Props as any)?.Application || undefined,
+      author: (props.Author || props.Creator) ? String(props.Author || props.Creator) : undefined,
+      created: props.Created ? String(props.Created) : undefined,
+      modified: props.Modified ? String(props.Modified) : undefined,
+      application: props.Application ? String(props.Application) : undefined,
       hasMacros: wb.Workbook?.Names?.some((n) => n.Name.includes('macro')) || ext === 'xlsm',
     },
+  };
+}
+
+function singleSheetWorkbook(
+  fileName: string,
+  fileSizeBytes: number,
+  sheetName: string,
+  headers: string[],
+  rows: (string | number | boolean | null)[][]
+): WorkbookData {
+  return {
+    fileName,
+    fileSizeBytes,
+    activeSheetIndex: 0,
+    sheets: [
+      {
+        name: sheetName,
+        headers,
+        rows,
+        totalRows: rows.length,
+        totalCols: headers.length,
+      },
+    ],
   };
 }
 
@@ -94,18 +142,13 @@ async function parseDelimitedText(file: File, delimiter?: string): Promise<Workb
 
   return new Promise((resolve, reject) => {
     Papa.parse<(string | number | null)[]>(text, {
-      delimiter: delimiter,
+      delimiter,
       dynamicTyping: true,
       skipEmptyLines: false,
       complete: (results) => {
         const rawData = results.data;
         if (!rawData || rawData.length === 0) {
-          return resolve({
-            fileName: file.name,
-            fileSizeBytes: file.size,
-            activeSheetIndex: 0,
-            sheets: [{ name: 'Sheet1', headers: ['Column 1'], rows: [], totalRows: 0, totalCols: 1 }],
-          });
+          return resolve(singleSheetWorkbook(file.name, file.size, 'Sheet1', ['Column 1'], []));
         }
 
         const maxCols = Math.max(...rawData.map((r) => (Array.isArray(r) ? r.length : 0)), 1);
@@ -123,86 +166,10 @@ async function parseDelimitedText(file: File, delimiter?: string): Promise<Workb
           return Array.from({ length: maxCols }, (_, idx) => (rowArr[idx] !== undefined ? rowArr[idx] : null));
         });
 
-        resolve({
-          fileName: file.name,
-          fileSizeBytes: file.size,
-          activeSheetIndex: 0,
-          sheets: [
-            {
-              name: file.name.replace(/\.[^/.]+$/, '').slice(0, 31) || 'Sheet1',
-              headers,
-              rows,
-              totalRows: rows.length,
-              totalCols: headers.length,
-            },
-          ],
-        });
+        const sheetName = file.name.replace(/\.[^/.]+$/, '').slice(0, 31) || 'Sheet1';
+        resolve(singleSheetWorkbook(file.name, file.size, sheetName, headers, rows));
       },
-      error: (err: any) => reject(new Error(err.message || 'Failed to parse CSV/TSV file')),
+      error: (err: Error) => reject(new Error(err.message || 'Failed to parse CSV/TSV file')),
     });
   });
-}
-
-async function parseJsonFile(file: File): Promise<WorkbookData> {
-  const text = await file.text();
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(text);
-  } catch (err: any) {
-    throw new Error('Invalid JSON syntax: ' + err.message);
-  }
-
-  let items: Record<string, any>[] = [];
-  if (Array.isArray(parsed)) {
-    items = parsed.filter((item) => typeof item === 'object' && item !== null);
-  } else if (typeof parsed === 'object' && parsed !== null) {
-    // If it's a wrapper object like { data: [...] } or { items: [...] }
-    const keys = Object.keys(parsed);
-    const arrayKey = keys.find((k) => Array.isArray((parsed as any)[k]));
-    if (arrayKey) {
-      items = (parsed as any)[arrayKey];
-    } else {
-      items = [parsed as Record<string, any>];
-    }
-  }
-
-  if (items.length === 0) {
-    return {
-      fileName: file.name,
-      fileSizeBytes: file.size,
-      activeSheetIndex: 0,
-      sheets: [{ name: 'JSON_Data', headers: ['Key', 'Value'], rows: [], totalRows: 0, totalCols: 2 }],
-    };
-  }
-
-  // Collect all unique keys
-  const headerSet = new Set<string>();
-  items.forEach((item) => {
-    Object.keys(item).forEach((k) => headerSet.add(k));
-  });
-  const headers = Array.from(headerSet);
-
-  const rows = items.map((item) =>
-    headers.map((h) => {
-      const val = item[h];
-      if (val === undefined || val === null) return null;
-      if (typeof val === 'object') return JSON.stringify(val);
-      return val;
-    })
-  );
-
-  return {
-    fileName: file.name,
-    fileSizeBytes: file.size,
-    activeSheetIndex: 0,
-    sheets: [
-      {
-        name: 'JSON_Data',
-        headers: headers.length > 0 ? headers : ['Key'],
-        rows,
-        totalRows: rows.length,
-        totalCols: headers.length,
-      },
-    ],
-  };
 }

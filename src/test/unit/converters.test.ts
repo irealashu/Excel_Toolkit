@@ -1,72 +1,107 @@
-import test from 'node:test';
+import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  tableToCsv,
+  csvToTable,
+  tableToTsv,
+  tableToJson,
+  tableToJsonLines,
+  jsonToTable,
   tableToMarkdown,
   markdownToTable,
   tableToSql,
-  tableToHtml,
   tableToYaml,
   yamlToTable,
+  tableToXml,
+  xmlToTable,
   tableToLatex,
-} from '../../core/converters/index';
+  tableToIcs,
+  tableToVCard,
+} from '../../core/converters/index.ts';
 
-test('tableToMarkdown and markdownToTable roundtrip', () => {
-  const headers = ['Name', 'Age', 'City'];
+describe('Structured Format Converters', () => {
+  const headers = ['ID', 'Name', 'Amount'];
   const rows = [
-    ['Alice', 30, 'London'],
-    ['Bob', 25, 'Paris'],
+    ['ORD-1', 'Apex Cloud', 1200],
+    ['ORD-2', 'Zenith Ops', 450],
   ];
 
-  const md = tableToMarkdown(headers, rows);
-  assert.ok(md.includes('| Name | Age | City |'));
-  assert.ok(md.includes('| Alice | 30 | London |'));
+  it('round-trips CSV, TSV, JSON, and JSONL accurately', () => {
+    const csv = tableToCsv(headers, rows);
+    const parsedCsv = csvToTable(csv);
+    assert.deepEqual(parsedCsv.headers, headers);
+    assert.equal(parsedCsv.rows.length, 2);
+    assert.equal(parsedCsv.rows[0][2], 1200);
 
-  const parsed = markdownToTable(md);
-  assert.deepEqual(parsed.headers, headers);
-  assert.equal(parsed.rows.length, 2);
-  assert.equal(parsed.rows[0][0], 'Alice');
-  assert.equal(parsed.rows[1][2], 'Paris');
-});
+    const tsv = tableToTsv(headers, rows);
+    assert.ok(tsv.includes('\t'));
 
-test('tableToSql produces valid CREATE TABLE and batched INSERT SQL', () => {
-  const headers = ['product_id', 'product_name', 'price'];
-  const rows = [
-    ['P100', 'Office Chair', 199.99],
-    ['P200', 'Desk Mat', 29.5],
-  ];
+    const json = tableToJson(headers, rows);
+    const parsedJson = jsonToTable(json);
+    assert.deepEqual(parsedJson.headers, headers);
+    assert.equal(parsedJson.rows[1][1], 'Zenith Ops');
 
-  const sql = tableToSql('products', headers, rows, 'postgres');
-  assert.ok(sql.includes('CREATE TABLE IF NOT EXISTS "products"'));
-  assert.ok(sql.includes('INSERT INTO "products" ("product_id", "product_name", "price")'));
-  assert.ok(sql.includes("'Office Chair'"));
-});
+    const jsonl = tableToJsonLines(headers, rows);
+    const parsedJsonl = jsonToTable(jsonl);
+    assert.equal(parsedJsonl.rows.length, 2);
+  });
 
-test('tableToYaml and yamlToTable roundtrip', () => {
-  const headers = ['SKU', 'Quantity'];
-  const rows = [
-    ['A-100', 50],
-    ['B-200', 80],
-  ];
+  it('round-trips Markdown, YAML, and XML', () => {
+    const md = tableToMarkdown(headers, rows);
+    const parsedMd = markdownToTable(md);
+    assert.deepEqual(parsedMd.headers, headers);
+    assert.equal(parsedMd.rows[0][2], 1200);
 
-  const yamlStr = tableToYaml(headers, rows);
-  assert.ok(yamlStr.includes('SKU: A-100'));
-  assert.ok(yamlStr.includes('Quantity: 50'));
+    const yml = tableToYaml(headers, rows);
+    const parsedYml = yamlToTable(yml);
+    assert.deepEqual(parsedYml.headers, headers);
+    assert.equal(parsedYml.rows[1][2], 450);
 
-  const back = yamlToTable(yamlStr);
-  assert.equal(back.headers.length, 2);
-  assert.equal(back.rows.length, 2);
-});
+    const xml = tableToXml(headers, rows, 'orders', 'order');
+    assert.ok(xml.includes('<orders>'));
+    const parsedXml = xmlToTable(xml);
+    assert.deepEqual(parsedXml.headers, headers);
+    assert.equal(parsedXml.rows.length, 2);
+    assert.equal(parsedXml.rows[0][2], 1200);
+  });
 
-test('tableToLatex generates booktabs table markup', () => {
-  const headers = ['Item', 'Cost'];
-  const rows = [
-    ['Server', 1200],
-    ['Storage', 400],
-  ];
+  it('generates dialect-specific SQL and escaped LaTeX', () => {
+    const pgSql = tableToSql('Sales Orders', headers, rows, 'postgres', true);
+    assert.ok(pgSql.includes('CREATE TABLE IF NOT EXISTS "sales_orders"'));
+    assert.ok(pgSql.includes('"amount" NUMERIC'));
 
-  const tex = tableToLatex(headers, rows);
-  assert.ok(tex.includes('\\begin{table}'));
-  assert.ok(tex.includes('\\textbf{Item} & \\textbf{Cost}'));
-  assert.ok(tex.includes('Server & 1200 \\\\'));
-  assert.ok(tex.includes('\\end{table}'));
+    const mysqlSql = tableToSql('Sales Orders', headers, rows, 'mysql', true);
+    assert.ok(mysqlSql.includes('CREATE TABLE IF NOT EXISTS `sales_orders`'));
+    assert.ok(mysqlSql.includes('INSERT INTO `sales_orders`'));
+
+    const latex = tableToLatex(['Metric %', 'Cost $'], [['Margin', 50]]);
+    assert.ok(latex.includes('Metric \\%'));
+    assert.ok(latex.includes('Cost \\$'));
+  });
+
+  it('generates iCalendar (.ics) and vCard (.vcf) with accurate counts', () => {
+    const ics = tableToIcs(
+      ['Title', 'Start', 'Location'],
+      [
+        ['Budget Review', '2026-12-01T09:00:00Z', 'Room 4A'],
+        ['Invalid Row', 'not-a-date', 'Room 4B'],
+      ],
+      { title: 0, startDate: 1, location: 2 }
+    );
+    assert.equal(ics.eventCount, 1);
+    assert.equal(ics.skippedCount, 1);
+    assert.ok(ics.content.includes('SUMMARY:Budget Review'));
+
+    const vcard = tableToVCard(
+      ['Name', 'Email', 'Org'],
+      [
+        ['Sarah Jenkins', 'sarah@apex.io', 'Apex Cloud'],
+        ['', 'nobody@apex.io', ''],
+      ],
+      { name: 0, email: 1, org: 2 }
+    );
+    assert.equal(vcard.contactCount, 1);
+    assert.ok(vcard.content.includes('FN:Sarah Jenkins'));
+    assert.ok(vcard.content.includes('ORG:Apex Cloud'));
+  });
 });

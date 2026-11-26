@@ -30,6 +30,23 @@ export function downloadCsv(headers: string[], rows: (string | number | boolean 
   downloadText(csvContent, filename, 'text/csv;charset=utf-8');
 }
 
+export function downloadRawCsv(rows: (string | number | boolean | null)[][], filename: string): void {
+  const trimmedRows = trimTrailingEmptyRows(rows);
+  const csvContent = Papa.unparse(trimmedRows);
+  downloadText(csvContent, filename, 'text/csv;charset=utf-8');
+}
+
+function trimTrailingEmptyRows(rows: (string | number | boolean | null)[][]) {
+  let lastNonEmpty = rows.length - 1;
+  while (
+    lastNonEmpty >= 0 &&
+    rows[lastNonEmpty].every((c) => c === null || c === undefined || String(c).trim() === '')
+  ) {
+    lastNonEmpty--;
+  }
+  return rows.slice(0, Math.max(1, lastNonEmpty + 1));
+}
+
 export function downloadXlsx(
   sheets: { name: string; headers: string[]; rows: (string | number | boolean | null)[][] }[],
   filename: string
@@ -40,7 +57,6 @@ export function downloadXlsx(
     const sheetData = [sheet.headers, ...sheet.rows];
     const ws = XLSX.utils.aoa_to_sheet(sheetData);
 
-    // Auto-fit column widths
     const colWidths = sheet.headers.map((header, colIndex) => {
       let maxLen = header ? header.toString().length : 10;
       for (let r = 0; r < Math.min(sheet.rows.length, 50); r++) {
@@ -52,6 +68,38 @@ export function downloadXlsx(
       return { wch: Math.min(Math.max(maxLen + 2, 10), 45) };
     });
     ws['!cols'] = colWidths;
+
+    const safeName = sheet.name.replace(/[*?:/[\]]/g, '').slice(0, 31) || 'Sheet1';
+    XLSX.utils.book_append_sheet(wb, ws, safeName);
+  }
+
+  const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+  const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  downloadBlob(blob, filename.endsWith('.xlsx') ? filename : `${filename}.xlsx`);
+}
+
+// Exports raw grid rows (used by SpreadsheetEditor so synthetic A/B/C headers are NOT written as row 1)
+export function downloadEditorXlsx(
+  sheets: { name: string; rows: (string | number | boolean | null)[][] }[],
+  filename: string
+): void {
+  const wb = XLSX.utils.book_new();
+
+  for (const sheet of sheets) {
+    const cleanRows = trimTrailingEmptyRows(sheet.rows);
+    const ws = XLSX.utils.aoa_to_sheet(cleanRows);
+
+    const colCount = Math.max(...cleanRows.map((r) => r.length), 1);
+    ws['!cols'] = Array.from({ length: colCount }, (_, colIndex) => {
+      let maxLen = 10;
+      for (let r = 0; r < Math.min(cleanRows.length, 50); r++) {
+        const val = cleanRows[r]?.[colIndex];
+        if (val !== undefined && val !== null) {
+          maxLen = Math.max(maxLen, String(val).length);
+        }
+      }
+      return { wch: Math.min(Math.max(maxLen + 2, 10), 45) };
+    });
 
     const safeName = sheet.name.replace(/[*?:/[\]]/g, '').slice(0, 31) || 'Sheet1';
     XLSX.utils.book_append_sheet(wb, ws, safeName);

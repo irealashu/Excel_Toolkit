@@ -1,4 +1,5 @@
-import { SheetData, WorkbookData } from '../../registry/types';
+import * as XLSX from 'xlsx';
+import { WorkbookData } from '../../registry/types';
 
 export const SAMPLE_WORKBOOK: WorkbookData = {
   fileName: 'Company_Sales_Q3_Sample.xlsx',
@@ -19,7 +20,7 @@ export const SAMPLE_WORKBOOK: WorkbookData = {
         ['ORD-9021', 'Apex Cloud Tech', 'North America', 'Enterprise Software', 5, 1200, 6000, 'Completed'],
         ['ORD-9022', 'Zenith Logistics', 'Europe', 'Cloud Hardware', 12, 350, 4200, 'Processing'],
         ['ORD-9023', 'BioHealth Pharma', 'Asia Pacific', 'Analytics Suite', 3, 2400, 7200, 'Completed'],
-        ['ORD-9024', 'Apex Cloud Tech', 'North America', 'Enterprise Software', 5, 1200, 6000, 'Completed'], // duplicate for testing dedupe
+        ['ORD-9021', 'Apex Cloud Tech', 'North America', 'Enterprise Software', 5, 1200, 6000, 'Completed'],
         ['ORD-9025', 'Summit Retail Corp', 'North America', 'POS Terminals', 20, 180, 3600, 'Shipped'],
         ['ORD-9026', 'Solaria Energy', 'Latin America', 'Solar Telemetry', 8, 850, 6800, 'Completed'],
         ['ORD-9027', 'Quantum Labs', 'Europe', 'Analytics Suite', 4, 2400, 9600, 'Processing'],
@@ -45,15 +46,53 @@ export const SAMPLE_WORKBOOK: WorkbookData = {
       totalRows: 5,
       totalCols: 6,
     },
+    {
+      name: 'Project_Schedule',
+      headers: ['Event_Title', 'Start_Date', 'End_Date', 'Location', 'Description'],
+      rows: [
+        ['Q4 Budget Kickoff', '2026-12-01T09:00:00Z', '2026-12-01T10:30:00Z', 'Boardroom A', 'Quarterly operating budget review'],
+        ['Data Pipeline Audit', '2026-12-04T14:00:00Z', '2026-12-04T15:30:00Z', 'Online Meeting', 'Review workbook security controls'],
+        ['Release Freeze', '2026-12-10T17:00:00Z', '2026-12-10T18:00:00Z', 'Engineering Hub', 'Final QA sign-off before deployment'],
+        ['Executive Quarterly Review', '2026-12-15T10:00:00Z', '2026-12-15T12:00:00Z', 'Conference Hall', 'Present Q4 metrics and forecast'],
+      ],
+      totalRows: 4,
+      totalCols: 5,
+    },
   ],
 };
 
-export const SAMPLE_CSV_TEXT = `Order_ID,Customer_Name,Region,Product_Category,Quantity,Unit_Price,Total_Revenue,Order_Status
-ORD-9021,Apex Cloud Tech,North America,Enterprise Software,5,1200,6000,Completed
-ORD-9022,Zenith Logistics,Europe,Cloud Hardware,12,350,4200,Processing
-ORD-9023,BioHealth Pharma,Asia Pacific,Analytics Suite,3,2400,7200,Completed
-ORD-9024,Apex Cloud Tech,North America,Enterprise Software,5,1200,6000,Completed
-ORD-9025,Summit Retail Corp,North America,POS Terminals,20,180,3600,Shipped
-ORD-9026,Solaria Energy,Latin America,Solar Telemetry,8,850,6800,Completed
-ORD-9027,Quantum Labs,Europe,Analytics Suite,4,2400,9600,Processing
-ORD-9028,Pacific Maritime,Asia Pacific,Fleet Tracking,15,420,6300,Completed`;
+export function cloneSampleWorkbook(activeSheetIndex = 0): WorkbookData {
+  const cloned = JSON.parse(JSON.stringify(SAMPLE_WORKBOOK)) as WorkbookData;
+  cloned.activeSheetIndex = activeSheetIndex;
+  return cloned;
+}
+
+// Synthesize a real binary XLSX File in memory for instant security inspection testing
+export function createSampleXlsxFile(): File {
+  const wb = XLSX.utils.book_new();
+  (wb.Props as Record<string, unknown>) = {
+    Author: 'Sarah Jenkins',
+    Company: 'Apex Analytics Corp',
+    Application: 'Microsoft Excel 365',
+    Title: 'Q3 Financial Summary',
+  };
+
+  for (const sheet of SAMPLE_WORKBOOK.sheets) {
+    const ws = XLSX.utils.aoa_to_sheet([sheet.headers, ...sheet.rows]);
+    XLSX.utils.book_append_sheet(wb, ws, sheet.name);
+  }
+
+  // Mark the 3rd sheet as hidden to demonstrate hidden-sheet detection
+  wb.Workbook = {
+    Sheets: [
+      { name: 'Orders_Summary', Hidden: 0 },
+      { name: 'Customer_Contacts', Hidden: 0 },
+      { name: 'Project_Schedule', Hidden: 1 },
+    ],
+  };
+
+  const arrayBuf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+  return new File([arrayBuf], 'Company_Sales_Q3_Audit_Sample.xlsx', {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  });
+}

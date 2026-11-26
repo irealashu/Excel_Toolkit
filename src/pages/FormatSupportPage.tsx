@@ -1,63 +1,58 @@
 import React from 'react';
-import { FileCheck, Check, AlertCircle, X } from 'lucide-react';
+
+const FORMAT_ROWS = [
+  { format: 'Excel Modern (.xlsx)', read: 'Full', write: 'Full', notes: 'Multi-sheet workbooks, column widths, metadata, and OpenXML inspection.' },
+  { format: 'Excel Legacy (.xls)', read: 'Full', write: 'Via .xlsx', notes: 'BIFF binary workbooks parsed locally and upgraded cleanly to .xlsx.' },
+  { format: 'Excel Macro-Enabled (.xlsm)', read: 'Full (Safe)', write: 'Sanitized .xlsx', notes: 'Reads sheets safely without running VBA; strips vbaProject.bin on sanitize.' },
+  { format: 'Excel Binary (.xlsb)', read: 'Full', write: 'Via .xlsx', notes: 'Binary sheets parsed locally into standard tabular views.' },
+  { format: 'CSV (.csv)', read: 'Full', write: 'Full', notes: 'RFC 4180 compliant quoting, custom delimiters (, ; | tab), UTF-8 safe.' },
+  { format: 'TSV (.tsv)', read: 'Full', write: 'Full', notes: 'Tab-separated values for direct Excel/Sheets clipboard & CLI pipelines.' },
+  { format: 'JSON & JSONL (.json, .jsonl)', read: 'Full', write: 'Full', notes: 'Arrays of objects, nested JSON stringification, and streaming NDJSON lines.' },
+  { format: 'Markdown Tables (.md)', read: 'Full', write: 'Full', notes: 'GitHub-Flavored Markdown (GFM) pipe tables parsed and generated bidirectionally.' },
+  { format: 'SQL Inserts & DDL (.sql)', read: 'Export', write: 'Full', notes: 'PostgreSQL, MySQL, and SQLite dialects with inferred NUMERIC/TEXT schemas.' },
+  { format: 'HTML Tables (.html)', read: 'Full', write: 'Full', notes: 'DOMParser extraction with <script>/<style> stripping and escaped export.' },
+  { format: 'YAML (.yaml, .yml)', read: 'Full', write: 'Full', notes: 'Safe js-yaml parsing and 2-space indented serialization.' },
+  { format: 'XML (.xml)', read: 'Full', write: 'Full', notes: 'Repeated element/attribute extraction and custom root/row tag export.' },
+  { format: 'LaTeX Booktabs (.tex)', read: 'Export', write: 'Full', notes: 'Academic tabular + booktabs markup with automatic special-character escaping.' },
+  { format: 'iCalendar (.ics)', read: 'Export', write: 'Full', notes: 'RFC 5545 VEVENT calendar files with ISO date parsing and skipped-row warnings.' },
+  { format: 'vCard 3.0 (.vcf)', read: 'Export', write: 'Full', notes: 'Multi-contact address book files with name, organization, email, and phone.' },
+];
 
 export const FormatSupportPage: React.FC = () => {
-  const formats = [
-    { ext: '.xlsx', name: 'Excel OpenXML Workbook', read: 'Full', write: 'Full', note: 'Standard modern format. Supports multi-sheet, formulas, styles.' },
-    { ext: '.xls', name: 'Excel 97-2004 Binary', read: 'Full', write: 'Partial', note: 'Legacy binary BIFF8 format parsing supported.' },
-    { ext: '.xlsm', name: 'Excel Macro-Enabled Workbook', read: 'Full', write: 'Full (Macro-free)', note: 'VBA macro inspection supported. Macro execution is strictly blocked.' },
-    { ext: '.csv', name: 'Comma Separated Values', read: 'Full', write: 'Full', note: 'RFC 4180 compliant with auto-delimiter detection and Unicode.' },
-    { ext: '.tsv', name: 'Tab Separated Values', read: 'Full', write: 'Full', note: 'Tabular text parsing with clipboard paste compatibility.' },
-    { ext: '.json', name: 'JavaScript Object Notation', read: 'Full', write: 'Full', note: 'Array of objects or 2D matrix transformation.' },
-    { ext: '.md', name: 'Markdown Tables', read: 'Full', write: 'Full', note: 'GitHub-Flavored Markdown (GFM) pipe table syntax.' },
-    { ext: '.sql', name: 'SQL INSERT Statements', read: 'Full', write: 'Full', note: 'Generates CREATE TABLE and batched INSERT statements.' },
-    { ext: '.html', name: 'HTML Tables', read: 'Full', write: 'Full', note: 'Table DOM extraction and responsive HTML generation.' },
-    { ext: '.yaml', name: 'YAML Document', read: 'Full', write: 'Full', note: 'Tabular array to structured YAML serialization.' },
-    { ext: '.tex', name: 'LaTeX Tabular & Booktabs', read: 'N/A', write: 'Full', note: 'Academic tabular LaTeX syntax with escaped characters.' },
-    { ext: '.ics', name: 'iCalendar Events', read: 'N/A', write: 'Full', note: 'RFC 5545 calendar event generation from tabular dates.' },
-    { ext: '.vcf', name: 'vCard 3.0 Contacts', read: 'N/A', write: 'Full', note: 'Standard address book contact cards from table rows.' },
-  ];
-
   return (
-    <div className="max-w-4xl mx-auto space-y-8 py-10">
-      <div>
-        <h1 className="text-3xl font-extrabold text-white">Supported Format Matrix</h1>
-        <p className="text-xs sm:text-sm text-slate-400 mt-1">
-          Honest accounting of all browser-side read and export capabilities across spreadsheet formats.
+    <div className="space-y-6 pb-12">
+      <div className="space-y-2 border-b border-slate-200 dark:border-slate-800 pb-5">
+        <h1 className="font-display text-3xl font-bold tracking-tight text-slate-900 dark:text-white">
+          Format Support Matrix
+        </h1>
+        <p className="text-sm text-slate-600 dark:text-slate-400">
+          All listed parsers and generators execute natively inside your browser without external services.
         </p>
       </div>
 
-      <div className="rounded-xl border border-slate-800 bg-slate-900 overflow-hidden shadow-xl">
-        <table className="min-w-full divide-y divide-slate-800 text-xs text-left">
-          <thead className="bg-slate-950 font-semibold text-slate-300">
-            <tr>
-              <th className="px-4 py-3">Format</th>
-              <th className="px-4 py-3">Name</th>
-              <th className="px-4 py-3 text-center">Read / Import</th>
-              <th className="px-4 py-3 text-center">Write / Export</th>
-              <th className="px-4 py-3">Capabilities &amp; Scope</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-800/60 bg-slate-900/50">
-            {formats.map((f, i) => (
-              <tr key={i} className="hover:bg-slate-800/40">
-                <td className="px-4 py-3 font-mono font-bold text-emerald-400">{f.ext}</td>
-                <td className="px-4 py-3 font-medium text-white">{f.name}</td>
-                <td className="px-4 py-3 text-center">
-                  <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                    {f.read}
-                  </span>
-                </td>
-                <td className="px-4 py-3 text-center">
-                  <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-blue-500/10 text-blue-400 border border-blue-500/20">
-                    {f.write}
-                  </span>
-                </td>
-                <td className="px-4 py-3 text-slate-400">{f.note}</td>
+      <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-800 text-xs">
+            <thead className="bg-slate-50 dark:bg-[#0d1219] text-slate-500 dark:text-slate-400">
+              <tr>
+                <th className="px-4 py-3 text-left font-display font-semibold">Format</th>
+                <th className="px-4 py-3 text-left font-display font-semibold">Import / Read</th>
+                <th className="px-4 py-3 text-left font-display font-semibold">Export / Write</th>
+                <th className="px-4 py-3 text-left font-display font-semibold">Implementation Details</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
+              {FORMAT_ROWS.map((row) => (
+                <tr key={row.format} className="hover:bg-slate-50 dark:hover:bg-slate-800/30">
+                  <td className="px-4 py-3 font-medium text-slate-900 dark:text-white whitespace-nowrap">{row.format}</td>
+                  <td className="px-4 py-3 font-mono text-emerald-700 dark:text-emerald-400 whitespace-nowrap">{row.read}</td>
+                  <td className="px-4 py-3 font-mono text-slate-700 dark:text-slate-300 whitespace-nowrap">{row.write}</td>
+                  <td className="px-4 py-3 text-slate-600 dark:text-slate-400">{row.notes}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );

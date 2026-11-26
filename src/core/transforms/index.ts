@@ -678,3 +678,61 @@ export function joinTables(
 
   return { headers: mergedHeaders, rows: joinedRows };
 }
+
+export function unpivotTable(
+  headers: string[],
+  rows: (string | number | boolean | null)[][],
+  idColIndices: number[],
+  variableColName = 'Attribute',
+  valueColName = 'Value'
+): { headers: string[]; rows: (string | number | boolean | null)[][] } {
+  const idSet = new Set(idColIndices);
+  const valueColIndices = headers.map((_, i) => i).filter((i) => !idSet.has(i));
+
+  if (valueColIndices.length === 0) {
+    return { headers, rows };
+  }
+
+  const outHeaders = [
+    ...idColIndices.map((i) => headers[i] || `Col_${i + 1}`),
+    variableColName,
+    valueColName,
+  ];
+
+  const outRows: (string | number | boolean | null)[][] = [];
+  for (const row of rows) {
+    const idVals = idColIndices.map((i) => row[i] ?? null);
+    for (const vIdx of valueColIndices) {
+      outRows.push([...idVals, headers[vIdx] || `Col_${vIdx + 1}`, row[vIdx] ?? null]);
+    }
+  }
+
+  return { headers: outHeaders, rows: outRows };
+}
+
+export function mergeTablesStack(
+  tables: { name: string; headers: string[]; rows: (string | number | boolean | null)[][] }[],
+  includeSourceColumn = true
+): { headers: string[]; rows: (string | number | boolean | null)[][] } {
+  const headerSet = new Set<string>();
+  tables.forEach((t) => t.headers.forEach((h) => headerSet.add(h)));
+  const unifiedHeaders = Array.from(headerSet);
+  const finalHeaders = includeSourceColumn ? ['Source_Sheet', ...unifiedHeaders] : unifiedHeaders;
+
+  const mergedRows: (string | number | boolean | null)[][] = [];
+  for (const table of tables) {
+    const colIndexMap = new Map<string, number>();
+    table.headers.forEach((h, i) => colIndexMap.set(h, i));
+
+    for (const row of table.rows) {
+      const mapped = unifiedHeaders.map((h) => {
+        const idx = colIndexMap.get(h);
+        return idx !== undefined ? (row[idx] ?? null) : null;
+      });
+      mergedRows.push(includeSourceColumn ? [table.name, ...mapped] : mapped);
+    }
+  }
+
+  return { headers: finalHeaders, rows: mergedRows };
+}
+

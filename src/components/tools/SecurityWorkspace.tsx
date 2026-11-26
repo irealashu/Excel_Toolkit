@@ -1,219 +1,286 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
+import { Upload, ShieldCheck, ShieldAlert, AlertTriangle, Download, FileArchive, CheckCircle2 } from 'lucide-react';
 import {
-  ShieldCheck,
-  ShieldAlert,
-  AlertTriangle,
-  FolderArchive,
-  Download,
-  CheckCircle2,
-  Lock,
-  EyeOff,
-  User,
-  Sparkles
-} from 'lucide-react';
-import { inspectWorkbookSecurity, stripWorkbookMetadataAndMacros, SecurityInspectionReport } from '../../core/security';
-import { downloadBlob } from '../../core/files/downloadBlob';
+  inspectWorkbookSecurity,
+  SecurityInspectionReport,
+  stripWorkbookMetadataAndMacros,
+} from '../../core/security';
+import { downloadBlob, downloadJson } from '../../core/files/downloadBlob';
 import { formatBytes } from '../../core/files/detectFormat';
+import { createSampleXlsxFile } from '../../core/files/sampleData';
 
 export const SecurityWorkspace: React.FC = () => {
-  const [report, setReport] = useState<SecurityInspectionReport | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [sanitizing, setSanitizing] = useState(false);
-  const [sanitizedBlob, setSanitizedBlob] = useState<Blob | null>(null);
+  const [report, setReport] = useState<SecurityInspectionReport | null>(null);
+  const [isInspecting, setIsInspecting] = useState(false);
+  const [isScrubbing, setIsScrubbing] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
+  const runInspection = async (file: File) => {
+    setErrorMessage(null);
+    setStatusMessage(null);
+    setIsInspecting(true);
     setSelectedFile(file);
-    setIsLoading(true);
-    setSanitizedBlob(null);
 
     try {
-      const res = await inspectWorkbookSecurity(file);
-      setReport(res);
-    } catch (err: any) {
-      alert('Security inspection error: ' + err.message);
+      const result = await inspectWorkbookSecurity(file);
+      setReport(result);
+    } catch (err: unknown) {
+      setErrorMessage(err instanceof Error ? err.message : 'Unable to inspect the selected workbook.');
+      setReport(null);
     } finally {
-      setIsLoading(false);
+      setIsInspecting(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
 
-  const handleSanitize = async () => {
+  const handleLoadSampleAudit = async () => {
+    const sampleFile = createSampleXlsxFile();
+    await runInspection(sampleFile);
+  };
+
+  const handleScrub = async () => {
     if (!selectedFile) return;
-    setSanitizing(true);
+    setErrorMessage(null);
+    setStatusMessage(null);
+    setIsScrubbing(true);
+
     try {
-      const blob = await stripWorkbookMetadataAndMacros(selectedFile);
-      setSanitizedBlob(blob);
-      downloadBlob(blob, `sanitized_${selectedFile.name.replace(/\.[^/.]+$/, '')}.xlsx`);
-    } catch (err: any) {
-      alert('Sanitization failed: ' + err.message);
+      const cleanBlob = await stripWorkbookMetadataAndMacros(selectedFile);
+      const baseName = selectedFile.name.replace(/\.[^/.]+$/, '');
+      downloadBlob(cleanBlob, `${baseName}_sanitized.xlsx`);
+      setStatusMessage(`Downloaded sanitized workbook (${baseName}_sanitized.xlsx) with author metadata and macros stripped.`);
+    } catch (err: unknown) {
+      setErrorMessage(err instanceof Error ? err.message : 'Failed to sanitize workbook.');
     } finally {
-      setSanitizing(false);
+      setIsScrubbing(false);
     }
   };
 
   return (
     <div className="space-y-6">
-      {/* 1. File Upload Card */}
-      <div className="rounded-xl border border-slate-800 bg-slate-900 p-6 space-y-4">
-        <div className="flex items-center space-x-3">
-          <div className="h-10 w-10 rounded-xl bg-orange-500/20 text-orange-400 flex items-center justify-center">
-            <ShieldCheck className="h-6 w-6" />
-          </div>
-          <div>
-            <h3 className="text-base font-bold text-white">Workbook Security & Macro Audit</h3>
-            <p className="text-xs text-slate-400">
-              Inspect OpenXML zip contents, detect embedded VBA binaries, expose hidden worksheets, and sanitize metadata.
-            </p>
-          </div>
+      {/* Dropzone Card */}
+      <div className="rounded-xl border border-dashed border-slate-300 dark:border-slate-700 bg-white dark:bg-[#111827] p-8 text-center">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".xlsx,.xlsm,.xlsb,.xls"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) runInspection(f);
+          }}
+          className="hidden"
+        />
+        <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200">
+          <Upload className="h-5 w-5" />
         </div>
+        <h3 className="font-display text-sm font-semibold text-slate-900 dark:text-white mb-1">
+          Inspect Excel Package Structure, Macros &amp; Metadata
+        </h3>
+        <p className="text-xs text-slate-500 dark:text-slate-400 max-w-lg mx-auto mb-5 leading-relaxed">
+          Reads raw OpenXML ZIP streams without executing macros. Detects <code className="font-mono">vbaProject.bin</code>,
+          hidden worksheets, external links, and author properties locally in browser memory.
+        </p>
 
-        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 pt-2">
-          <label className="cursor-pointer rounded-lg bg-emerald-500 hover:bg-emerald-400 px-4 py-2 text-xs font-semibold text-slate-950 transition-colors shadow-sm">
-            <span>{isLoading ? 'Scanning Archive...' : 'Select XLSX / XLSM File'}</span>
-            <input
-              type="file"
-              onChange={handleFileChange}
-              accept=".xlsx,.xlsm,.xlsb,.xls"
-              className="hidden"
-            />
-          </label>
-
-          <span className="text-xs text-slate-500">
-            Audit runs 100% locally in browser memory without executing binary code.
-          </span>
+        <div className="flex flex-wrap items-center justify-center gap-2.5">
+          <button
+            type="button"
+            disabled={isInspecting}
+            onClick={() => fileInputRef.current?.click()}
+            className="h-9 rounded-lg bg-emerald-600 hover:bg-emerald-700 dark:bg-emerald-500 dark:hover:bg-emerald-400 px-4 text-xs font-semibold text-white dark:text-slate-950 transition-colors"
+          >
+            {isInspecting ? 'Inspecting ZIP package...' : 'Select .xlsx / .xlsm file'}
+          </button>
+          <button
+            type="button"
+            disabled={isInspecting}
+            onClick={handleLoadSampleAudit}
+            className="h-9 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+          >
+            Inspect Sample Audit Workbook
+          </button>
         </div>
       </div>
 
-      {/* 2. Audit Report */}
+      {errorMessage && (
+        <div
+          role="alert"
+          className="flex items-center gap-2 rounded-lg border border-rose-200 dark:border-rose-900 bg-rose-50 dark:bg-rose-950/30 p-3.5 text-xs text-rose-700 dark:text-rose-300"
+        >
+          <ShieldAlert className="h-4 w-4 shrink-0" />
+          <span>{errorMessage}</span>
+        </div>
+      )}
+
+      {statusMessage && (
+        <div className="flex items-center gap-2 rounded-lg border border-emerald-200 dark:border-emerald-900/60 bg-emerald-50 dark:bg-emerald-950/30 p-3.5 text-xs text-emerald-800 dark:text-emerald-300">
+          <CheckCircle2 className="h-4 w-4 shrink-0" />
+          <span>{statusMessage}</span>
+        </div>
+      )}
+
       {report && (
         <div className="space-y-6">
-          {/* Risk Level Header Banner */}
-          <div
-            className={`rounded-xl border p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 ${
-              report.riskLevel === 'HIGH'
-                ? 'border-rose-500/50 bg-rose-950/30'
-                : report.riskLevel === 'MEDIUM'
-                ? 'border-amber-500/50 bg-amber-950/30'
-                : 'border-emerald-500/50 bg-emerald-950/20'
-            }`}
-          >
-            <div className="flex items-center space-x-3">
-              {report.riskLevel === 'HIGH' ? (
-                <ShieldAlert className="h-8 w-8 text-rose-400 shrink-0" />
-              ) : report.riskLevel === 'MEDIUM' ? (
-                <AlertTriangle className="h-8 w-8 text-amber-400 shrink-0" />
-              ) : (
-                <CheckCircle2 className="h-8 w-8 text-emerald-400 shrink-0" />
-              )}
-              <div>
-                <div className="flex items-center space-x-2">
-                  <h4 className="text-base font-bold text-white">Overall Threat Level: {report.riskLevel}</h4>
-                  <span className="text-xs text-slate-400">({report.fileName})</span>
+          {/* Summary Banner */}
+          <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            <div className="flex items-start gap-3.5">
+              <div
+                className={`mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${
+                  report.riskLevel === 'HIGH'
+                    ? 'bg-rose-100 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400'
+                    : report.riskLevel === 'MEDIUM'
+                    ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400'
+                    : 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400'
+                }`}
+              >
+                {report.riskLevel === 'HIGH' ? (
+                  <ShieldAlert className="h-5 w-5" />
+                ) : report.riskLevel === 'MEDIUM' ? (
+                  <AlertTriangle className="h-5 w-5" />
+                ) : (
+                  <ShieldCheck className="h-5 w-5" />
+                )}
+              </div>
+              <div className="space-y-1">
+                <div className="flex flex-wrap items-baseline gap-x-2.5">
+                  <h3 className="font-display text-base font-semibold text-slate-900 dark:text-white">
+                    {report.fileName}
+                  </h3>
+                  <span
+                    className={`font-mono text-xs font-semibold ${
+                      report.riskLevel === 'HIGH'
+                        ? 'text-rose-600 dark:text-rose-400'
+                        : report.riskLevel === 'MEDIUM'
+                        ? 'text-amber-600 dark:text-amber-400'
+                        : 'text-emerald-700 dark:text-emerald-400'
+                    }`}
+                  >
+                    RISK: {report.riskLevel}
+                  </span>
                 </div>
-                <p className="text-xs text-slate-300 mt-1">
-                  {report.hasVbaMacros
-                    ? 'Caution: Workbook contains compiled VBA macro code (vbaProject.bin). Never enable macros from untrusted sources.'
-                    : report.hiddenSheets.length > 0
-                    ? 'Workbook contains hidden sheets or external data links.'
-                    : 'Clean OpenXML package. No suspicious executable streams or embedded binaries detected.'}
+                <p className="text-xs text-slate-500 dark:text-slate-400 tabular-nums">
+                  {formatBytes(report.fileSizeBytes)} · {report.allSheets.length} sheets ({report.hiddenSheets.length}{' '}
+                  hidden) · {report.zipEntries.length} ZIP payload files · VBA Macros:{' '}
+                  {report.hasVbaMacros ? 'Detected' : 'None'}
                 </p>
               </div>
             </div>
 
-            <button
-              onClick={handleSanitize}
-              disabled={sanitizing}
-              className="flex items-center space-x-1.5 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-xs font-semibold text-white shadow-md transition-colors shrink-0"
-            >
-              <Sparkles className="h-3.5 w-3.5" />
-              <span>{sanitizing ? 'Sanitizing...' : 'Scrub & Download Macro-Free XLSX'}</span>
-            </button>
-          </div>
-
-          {/* Audit Metrics Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {/* Box 1: Macros */}
-            <div className="rounded-xl border border-slate-800 bg-slate-900/90 p-4 space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-slate-400 uppercase">VBA Macros</span>
-                <span
-                  className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                    report.hasVbaMacros ? 'bg-rose-500/20 text-rose-400' : 'bg-emerald-500/20 text-emerald-400'
-                  }`}
-                >
-                  {report.hasVbaMacros ? 'DETECTED' : 'NONE'}
-                </span>
-              </div>
-              <p className="text-xs text-slate-300">
-                {report.hasVbaMacros ? `Binary: ${report.vbaProjectFile}` : 'No macro streams present.'}
-              </p>
-            </div>
-
-            {/* Box 2: Sheets & Hidden */}
-            <div className="rounded-xl border border-slate-800 bg-slate-900/90 p-4 space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-slate-400 uppercase">Worksheets</span>
-                <span className="text-xs font-mono text-white">{report.allSheets.length} Total</span>
-              </div>
-              <div className="text-xs text-slate-300">
-                {report.hiddenSheets.length > 0 ? (
-                  <span className="text-amber-400 font-semibold">
-                    {report.hiddenSheets.length} Hidden: {report.hiddenSheets.join(', ')}
-                  </span>
-                ) : (
-                  <span>All sheets visible</span>
-                )}
-              </div>
-            </div>
-
-            {/* Box 3: Personal Metadata */}
-            <div className="rounded-xl border border-slate-800 bg-slate-900/90 p-4 space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-slate-400 uppercase">Document Metadata</span>
-                <User className="h-4 w-4 text-slate-400" />
-              </div>
-              <div className="text-xs text-slate-300 space-y-1">
-                <div>Creator: <span className="text-slate-100">{report.metadata.creator || 'None'}</span></div>
-                <div>Application: <span className="text-slate-100">{report.metadata.application || 'None'}</span></div>
-              </div>
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => downloadJson(report, `${report.fileName}_security_report.json`)}
+                className="inline-flex items-center gap-1.5 h-8 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+              >
+                <Download className="h-3.5 w-3.5" />
+                <span>Audit JSON</span>
+              </button>
+              <button
+                type="button"
+                disabled={isScrubbing}
+                onClick={handleScrub}
+                className="inline-flex items-center gap-1.5 h-8 rounded-lg bg-emerald-600 hover:bg-emerald-700 dark:bg-emerald-500 dark:hover:bg-emerald-400 px-3.5 text-xs font-semibold text-white dark:text-slate-950 transition-colors"
+              >
+                <ShieldCheck className="h-3.5 w-3.5" />
+                <span>{isScrubbing ? 'Sanitizing...' : 'Scrub Metadata & Macros'}</span>
+              </button>
             </div>
           </div>
 
-          {/* Detailed ZIP Entries Tree */}
-          {report.zipEntries.length > 0 && (
-            <div className="rounded-xl border border-slate-800 bg-slate-900 overflow-hidden shadow-xl">
-              <div className="px-4 py-3 bg-slate-950 border-b border-slate-800 flex items-center justify-between">
-                <div className="flex items-center space-x-2">
-                  <FolderArchive className="h-4 w-4 text-emerald-400" />
-                  <h4 className="text-xs font-semibold text-white uppercase tracking-wider">
-                    ZIP Container Stream Architecture
-                  </h4>
-                </div>
-                <span className="text-xs text-slate-400">{report.zipEntries.length} package streams</span>
-              </div>
+          {/* Findings + Metadata + Sheets */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] p-5 space-y-4">
+              <h4 className="font-display text-sm font-semibold text-slate-900 dark:text-white">Security Findings</h4>
+              <ul className="space-y-2.5 text-xs text-slate-700 dark:text-slate-300">
+                {report.findings.map((finding, idx) => (
+                  <li key={idx} className="flex items-start gap-2">
+                    <span className="mt-1 h-1.5 w-1.5 rounded-full bg-emerald-600 dark:bg-emerald-400 shrink-0" />
+                    <span className="leading-relaxed">{finding}</span>
+                  </li>
+                ))}
+              </ul>
 
-              <div className="max-h-72 overflow-y-auto divide-y divide-slate-800/80 font-mono text-xs">
-                {report.zipEntries.map((entry, idx) => (
-                  <div
-                    key={idx}
-                    className={`flex items-center justify-between px-4 py-2 hover:bg-slate-800/40 ${
-                      entry.isSuspicious ? 'bg-rose-950/30 text-rose-300' : 'text-slate-300'
-                    }`}
-                  >
-                    <span className="truncate max-w-lg">{entry.path}</span>
-                    <div className="flex items-center space-x-4 shrink-0 text-slate-400 text-[11px]">
-                      <span>{formatBytes(entry.uncompressedSize)}</span>
-                      {entry.isSuspicious && (
-                        <span className="rounded bg-rose-500/20 text-rose-400 px-1.5 py-0.5 text-[10px] font-bold">
-                          RISK
-                        </span>
-                      )}
+              <div className="border-t border-slate-200 dark:border-slate-800 pt-4 space-y-2">
+                <h5 className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                  Worksheet Visibility
+                </h5>
+                <div className="divide-y divide-slate-100 dark:divide-slate-800 text-xs">
+                  {report.allSheets.map((s, i) => (
+                    <div key={s.name + i} className="flex items-center justify-between py-2">
+                      <span className="font-mono text-slate-800 dark:text-slate-200">{s.name}</span>
+                      <span
+                        className={`font-medium ${
+                          s.isHidden
+                            ? 'text-amber-600 dark:text-amber-400'
+                            : 'text-emerald-700 dark:text-emerald-400'
+                        }`}
+                      >
+                        {s.isHidden ? 'Hidden' : 'Visible'}
+                      </span>
                     </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] p-5 space-y-4">
+              <h4 className="font-display text-sm font-semibold text-slate-900 dark:text-white">Document Properties</h4>
+              <dl className="divide-y divide-slate-100 dark:divide-slate-800 text-xs">
+                {[
+                  ['Creator / Author', report.metadata.creator || 'Not present'],
+                  ['Last Modified By', report.metadata.lastModifiedBy || 'Not present'],
+                  ['Organization / Company', report.metadata.company || 'Not present'],
+                  ['Application', report.metadata.application || 'Not present'],
+                  ['Created Timestamp', report.metadata.created || 'Not present'],
+                  ['Modified Timestamp', report.metadata.modified || 'Not present'],
+                ].map(([label, val]) => (
+                  <div key={label} className="flex items-center justify-between py-2 gap-4">
+                    <dt className="text-slate-500 dark:text-slate-400">{label}</dt>
+                    <dd className="font-mono text-slate-800 dark:text-slate-200 text-right truncate">{val}</dd>
                   </div>
                 ))}
+              </dl>
+            </div>
+          </div>
+
+          {/* ZIP Archive Contents */}
+          {report.isZipArchive && (
+            <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] overflow-hidden">
+              <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-[#0d1219] px-4 py-3">
+                <div className="flex items-center gap-2">
+                  <FileArchive className="h-4 w-4 text-slate-500" />
+                  <h4 className="font-display text-sm font-semibold text-slate-900 dark:text-white">
+                    OpenXML ZIP Stream Inventory ({report.zipEntries.length} entries)
+                  </h4>
+                </div>
+              </div>
+              <div className="overflow-x-auto max-h-72">
+                <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-800 text-xs font-mono tabular-nums">
+                  <thead className="bg-slate-50 dark:bg-[#0d1219] text-slate-500 dark:text-slate-400">
+                    <tr>
+                      <th className="px-4 py-2 text-left font-sans font-semibold">Internal Path</th>
+                      <th className="px-4 py-2 text-right font-sans font-semibold">Compressed</th>
+                      <th className="px-4 py-2 text-right font-sans font-semibold">Uncompressed</th>
+                      <th className="px-4 py-2 text-right font-sans font-semibold">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800/70">
+                    {report.zipEntries.map((entry) => (
+                      <tr key={entry.path} className={entry.isSuspicious ? 'bg-rose-50/60 dark:bg-rose-950/20' : ''}>
+                        <td className="px-4 py-2 text-slate-800 dark:text-slate-200">{entry.path}</td>
+                        <td className="px-4 py-2 text-right text-slate-500">{formatBytes(entry.compressedSize)}</td>
+                        <td className="px-4 py-2 text-right text-slate-500">{formatBytes(entry.uncompressedSize)}</td>
+                        <td className="px-4 py-2 text-right">
+                          <span className={entry.isSuspicious ? 'text-rose-600 dark:text-rose-400 font-semibold' : 'text-emerald-700 dark:text-emerald-400'}>
+                            {entry.isSuspicious ? 'Flagged' : 'Clean'}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             </div>
           )}

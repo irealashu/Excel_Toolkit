@@ -1,7 +1,7 @@
 import React, { useRef, useState } from 'react';
-import { UploadCloud, FileText, CheckCircle2, AlertCircle, Sparkles, X, FileSpreadsheet } from 'lucide-react';
+import { Upload, AlertCircle, X, FileSpreadsheet } from 'lucide-react';
 import { parseWorkbookFile } from '../../core/files/parseWorkbook';
-import { SAMPLE_WORKBOOK } from '../../core/files/sampleData';
+import { cloneSampleWorkbook } from '../../core/files/sampleData';
 import { formatBytes } from '../../core/files/detectFormat';
 import { WorkbookData } from '../../registry/types';
 
@@ -13,16 +13,18 @@ interface FileDropzoneProps {
   title?: string;
   subtitle?: string;
   allowSampleData?: boolean;
+  defaultSampleSheetIndex?: number;
 }
 
 export const FileDropzone: React.FC<FileDropzoneProps> = ({
-  acceptedFormats = ['.xlsx', '.xls', '.csv', '.tsv', '.json'],
+  acceptedFormats = ['.xlsx', '.xls', '.xlsm', '.csv', '.tsv', '.json', '.md', '.html', '.yaml', '.xml'],
   currentWorkbook,
   onWorkbookLoaded,
   onClear,
-  title = 'Drop your spreadsheet or file here',
-  subtitle = 'Supports XLSX, XLS, CSV, TSV, JSON up to 100MB. Processed entirely locally.',
+  title = 'Drop a spreadsheet or structured file here',
+  subtitle = 'Supports XLSX, XLS, CSV, TSV, JSON, YAML, XML, HTML, and Markdown. Processed locally in browser memory.',
   allowSampleData = true,
+  defaultSampleSheetIndex = 0,
 }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -38,8 +40,9 @@ export const FileDropzone: React.FC<FileDropzoneProps> = ({
     try {
       const wb = await parseWorkbookFile(file);
       onWorkbookLoaded(wb);
-    } catch (err: any) {
-      setErrorMessage(err.message || 'Failed to read spreadsheet file. Please check file format.');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to parse file. Please verify the format.';
+      setErrorMessage(msg);
     } finally {
       setIsLoading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -52,62 +55,78 @@ export const FileDropzone: React.FC<FileDropzoneProps> = ({
     handleFiles(e.dataTransfer.files);
   };
 
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(true);
-  };
-
-  const handleDragLeave = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(false);
-  };
-
   const handleLoadSample = () => {
     setErrorMessage(null);
-    onWorkbookLoaded(SAMPLE_WORKBOOK);
+    onWorkbookLoaded(cloneSampleWorkbook(defaultSampleSheetIndex));
+  };
+
+  const handleSheetChange = (sheetIndex: number) => {
+    if (!currentWorkbook) return;
+    onWorkbookLoaded({
+      ...currentWorkbook,
+      activeSheetIndex: sheetIndex,
+    });
   };
 
   if (currentWorkbook) {
     const activeSheet = currentWorkbook.sheets[currentWorkbook.activeSheetIndex] || currentWorkbook.sheets[0];
     return (
-      <div className="rounded-xl border border-emerald-500/30 bg-emerald-950/20 p-4 transition-all">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div className="flex items-center space-x-3">
-            <div className="h-10 w-10 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
-              <FileSpreadsheet className="h-5 w-5" />
+      <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] px-4 py-3.5 transition-colors">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="h-9 w-9 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 flex items-center justify-center shrink-0">
+              <FileSpreadsheet className="h-4.5 w-4.5" />
             </div>
-            <div>
-              <div className="flex items-center space-x-2">
-                <h4 className="text-sm font-semibold text-white truncate max-w-xs sm:max-w-md">
-                  {currentWorkbook.fileName}
-                </h4>
-                <span className="rounded bg-emerald-500/20 text-emerald-300 text-[10px] font-bold px-1.5 py-0.5 uppercase tracking-wide">
-                  {currentWorkbook.fileName.split('.').pop()}
-                </span>
+            <div className="min-w-0">
+              <div className="text-sm font-semibold text-slate-900 dark:text-white truncate">
+                {currentWorkbook.fileName}
               </div>
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-400 mt-1">
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-slate-500 dark:text-slate-400 tabular-nums">
                 <span>{formatBytes(currentWorkbook.fileSizeBytes)}</span>
-                <span>•</span>
-                <span>{currentWorkbook.sheets.length} Sheet{currentWorkbook.sheets.length > 1 ? 's' : ''}</span>
-                <span>•</span>
-                <span className="text-emerald-400 font-medium">
-                  {activeSheet.totalRows.toLocaleString()} Rows × {activeSheet.totalCols} Columns
+                <span aria-hidden="true">·</span>
+                <span>
+                  {currentWorkbook.sheets.length} sheet{currentWorkbook.sheets.length === 1 ? '' : 's'}
+                </span>
+                <span aria-hidden="true">·</span>
+                <span className="text-emerald-700 dark:text-emerald-400 font-medium">
+                  {activeSheet.totalRows.toLocaleString()} rows × {activeSheet.totalCols} columns
                 </span>
               </div>
             </div>
           </div>
 
-          <div className="flex items-center space-x-2 self-end sm:self-center">
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            {currentWorkbook.sheets.length > 1 && (
+              <label className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-300">
+                <span className="sr-only">Active worksheet</span>
+                <select
+                  aria-label="Select active worksheet"
+                  value={currentWorkbook.activeSheetIndex}
+                  onChange={(e) => handleSheetChange(Number(e.target.value))}
+                  className="h-8 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 px-2.5 text-xs font-medium text-slate-800 dark:text-slate-200 focus:border-emerald-600 focus:outline-none"
+                >
+                  {currentWorkbook.sheets.map((s, idx) => (
+                    <option key={s.name + idx} value={idx}>
+                      Sheet: {s.name} ({s.totalRows})
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+
             <button
+              type="button"
               onClick={() => fileInputRef.current?.click()}
-              className="text-xs px-3 py-1.5 rounded-lg border border-slate-700 bg-slate-800 text-slate-200 hover:bg-slate-700 transition-colors"
+              className="h-8 px-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors whitespace-nowrap shrink-0"
             >
-              Change File
+              Replace file
             </button>
             <button
+              type="button"
               onClick={onClear}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
-              title="Remove file"
+              className="h-8 w-8 flex items-center justify-center rounded-lg text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
+              aria-label="Clear loaded file"
+              title="Clear loaded file"
             >
               <X className="h-4 w-4" />
             </button>
@@ -129,13 +148,18 @@ export const FileDropzone: React.FC<FileDropzoneProps> = ({
     <div className="space-y-3">
       <div
         onDrop={handleDrop}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onClick={() => fileInputRef.current?.click()}
-        className={`relative flex flex-col items-center justify-center rounded-2xl border-2 border-dashed p-8 text-center cursor-pointer transition-all ${
+        onDragOver={(e) => {
+          e.preventDefault();
+          setIsDragging(true);
+        }}
+        onDragLeave={(e) => {
+          e.preventDefault();
+          setIsDragging(false);
+        }}
+        className={`flex flex-col items-center justify-center rounded-xl border border-dashed p-8 text-center transition-colors ${
           isDragging
-            ? 'border-emerald-500 bg-emerald-950/30 scale-[0.99]'
-            : 'border-slate-700 bg-slate-900/50 hover:border-slate-600 hover:bg-slate-900/80'
+            ? 'border-emerald-600 bg-emerald-50/70 dark:bg-emerald-950/30'
+            : 'border-slate-300 dark:border-slate-700 bg-white dark:bg-[#111827]'
         }`}
       >
         <input
@@ -146,51 +170,45 @@ export const FileDropzone: React.FC<FileDropzoneProps> = ({
           className="hidden"
         />
 
-        <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-slate-800 text-slate-300">
-          <UploadCloud className="h-6 w-6" />
+        <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+          <Upload className="h-5 w-5" />
         </div>
 
-        <h3 className="text-sm font-semibold text-white mb-1">{title}</h3>
-        <p className="text-xs text-slate-400 max-w-md mb-4">{subtitle}</p>
+        <h3 className="font-display text-sm font-semibold text-slate-900 dark:text-white mb-1">{title}</h3>
+        <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mb-4 leading-relaxed">{subtitle}</p>
 
-        <div className="flex items-center space-x-3">
+        <div className="flex flex-wrap items-center justify-center gap-2.5">
           <button
             type="button"
-            className="rounded-lg bg-emerald-500 px-4 py-2 text-xs font-semibold text-slate-950 hover:bg-emerald-400 transition-colors shadow-sm"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isLoading}
+            className="h-9 rounded-lg bg-emerald-600 hover:bg-emerald-700 dark:bg-emerald-500 dark:hover:bg-emerald-400 px-4 text-xs font-semibold text-white dark:text-slate-950 transition-colors whitespace-nowrap"
           >
-            {isLoading ? 'Reading file...' : 'Choose File'}
+            {isLoading ? 'Reading file...' : 'Choose local file'}
           </button>
 
           {allowSampleData && (
             <button
               type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                handleLoadSample();
-              }}
-              className="flex items-center space-x-1.5 rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs font-medium text-slate-300 hover:border-slate-600 hover:text-white transition-colors"
+              onClick={handleLoadSample}
+              className="h-9 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors whitespace-nowrap"
             >
-              <Sparkles className="h-3.5 w-3.5 text-amber-400" />
-              <span>Load Sample Data</span>
+              Load sample workbook
             </button>
           )}
         </div>
 
-        <div className="mt-4 flex flex-wrap items-center justify-center gap-1.5">
-          {acceptedFormats.map((fmt) => (
-            <span
-              key={fmt}
-              className="rounded bg-slate-800/80 px-2 py-0.5 text-[10px] font-mono font-medium text-slate-400"
-            >
-              {fmt}
-            </span>
-          ))}
-        </div>
+        <p className="mt-4 text-xs font-mono text-slate-400 dark:text-slate-500">
+          {acceptedFormats.join(' · ')}
+        </p>
       </div>
 
       {errorMessage && (
-        <div className="flex items-center space-x-2 rounded-lg border border-rose-500/30 bg-rose-950/20 p-3 text-xs text-rose-300">
-          <AlertCircle className="h-4 w-4 shrink-0 text-rose-400" />
+        <div
+          role="alert"
+          className="flex items-center gap-2 rounded-lg border border-rose-200 dark:border-rose-900 bg-rose-50 dark:bg-rose-950/30 p-3 text-xs text-rose-700 dark:text-rose-300"
+        >
+          <AlertCircle className="h-4 w-4 shrink-0" />
           <span>{errorMessage}</span>
         </div>
       )}

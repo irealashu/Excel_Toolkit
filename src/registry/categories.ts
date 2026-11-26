@@ -67,7 +67,7 @@ export const CATEGORIES: Record<ToolCategory, CategoryDefinition> = {
   documents: {
     id: 'documents',
     name: 'Document Utilities',
-    description: 'Extract tables from DOCX and PDF, generate vCard and iCalendar schedules, and sanitize data.',
+    description: 'Generate iCalendar (.ics) schedules and vCard (.vcf) address books directly from spreadsheets.',
     icon: 'FileText',
     color: 'pink',
   },

@@ -1,5 +1,6 @@
-import React, { useState, useMemo } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  ResponsiveContainer,
   BarChart,
   Bar,
   LineChart,
@@ -8,65 +9,111 @@ import {
   Area,
   PieChart,
   Pie,
+  ScatterChart,
+  Scatter,
   Cell,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
   Legend,
-  ResponsiveContainer
 } from 'recharts';
-import { BarChart3, LineChart as LineIcon, PieChart as PieIcon, Sliders, FileSpreadsheet } from 'lucide-react';
+import { Download } from 'lucide-react';
 import { FileDropzone } from './FileDropzone';
-import { SAMPLE_WORKBOOK } from '../../core/files/sampleData';
 import { WorkbookData } from '../../registry/types';
+import { cloneSampleWorkbook } from '../../core/files/sampleData';
+import { downloadCsv, downloadText } from '../../core/files/downloadBlob';
 
-const COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#ec4899', '#8b5cf6', '#06b6d4', '#f97316', '#14b8a6'];
+type ChartType = 'bar' | 'line' | 'area' | 'pie' | 'scatter';
+type AggregationType = 'sum' | 'avg' | 'count';
+
+const SERIES_COLORS = ['#059669', '#0284c7', '#d97706', '#7c3aed', '#e11d48', '#0d9488', '#4f46e5'];
 
 export const ChartWorkspace: React.FC = () => {
-  const [workbook, setWorkbook] = useState<WorkbookData | null>(SAMPLE_WORKBOOK);
-  const [chartType, setChartType] = useState<'bar' | 'line' | 'area' | 'pie'>('bar');
-  const [xAxisCol, setXAxisCol] = useState<number>(3); // Product_Category default
-  const [yAxisCol, setYAxisCol] = useState<number>(6); // Total_Revenue default
-  const [aggMode, setAggMode] = useState<'sum' | 'avg' | 'count'>('sum');
+  const [workbook, setWorkbook] = useState<WorkbookData | null>(() => cloneSampleWorkbook(0));
+  const [chartType, setChartType] = useState<ChartType>('bar');
+  const [xAxisCol, setXAxisCol] = useState(2); // Region
+  const [yAxisCol, setYAxisCol] = useState(6); // Total_Revenue
+  const [aggregation, setAggregation] = useState<AggregationType>('sum');
+  const chartContainerRef = useRef<HTMLDivElement>(null);
 
   const activeSheet = workbook ? workbook.sheets[workbook.activeSheetIndex] || workbook.sheets[0] : null;
-  const headers = activeSheet ? activeSheet.headers : [];
-  const rows = activeSheet ? activeSheet.rows : [];
 
-  // Group and aggregate data locally
-  const chartData = useMemo(() => {
-    if (!activeSheet || rows.length === 0) return [];
+  useEffect(() => {
+    if (!activeSheet) return;
+    // Ensure selected column indices stay valid on sheet change
+    if (xAxisCol >= activeSheet.headers.length) setXAxisCol(0);
+    if (yAxisCol >= activeSheet.headers.length) {
+      // Pick first numeric-looking column or last column
+      const numIdx = activeSheet.headers.findIndex((_, colIdx) => {
+        const sample = activeSheet.rows.slice(0, 10).map((r) => r[colIdx]).filter((v) => v !== null && v !== '');
+        return sample.length > 0 && sample.every((v) => !isNaN(Number(v)));
+      });
+      setYAxisCol(numIdx >= 0 ? numIdx : Math.max(0, activeSheet.headers.length - 1));
+    }
+  }, [activeSheet, xAxisCol, yAxisCol]);
 
-    const grouped = new Map<string, { sum: number; count: number }>();
+  const chartData = useMemo<{ name: string; value: number; x?: number; count?: number }[]>(() => {
+    if (!activeSheet) return [];
+    const safeX = Math.min(xAxisCol, Math.max(0, activeSheet.headers.length - 1));
+    const safeY = Math.min(yAxisCol, Math.max(0, activeSheet.headers.length - 1));
 
-    rows.forEach((row) => {
-      const rawX = row[xAxisCol];
-      const key = rawX !== null && rawX !== undefined ? String(rawX) : 'Unassigned';
+    if (chartType === 'scatter') {
+      return activeSheet.rows
+        .map((row, idx) => {
+          const xVal = Number(row[safeX]);
+          const yVal = Number(row[safeY]);
+          return {
+            name: String(row[0] ?? `Row ${idx + 1}`),
+            x: Number.isFinite(xVal) ? xVal : idx + 1,
+            value: Number.isFinite(yVal) ? yVal : 0,
+          };
+        })
+        .slice(0, 200);
+    }
 
-      const rawY = row[yAxisCol];
-      const numY = typeof rawY === 'number' ? rawY : Number(rawY) || 0;
+    const groups = new Map<string, { sum: number; count: number }>();
+    for (const row of activeSheet.rows) {
+      const key = String(row[safeX] ?? 'Uncategorized').trim() || 'Uncategorized';
+      const num = Number(row[safeY]);
+      const val = Number.isFinite(num) ? num : 0;
+      const cur = groups.get(key) || { sum: 0, count: 0 };
+      cur.sum += val;
+      cur.count += 1;
+      groups.set(key, cur);
+    }
 
-      if (!grouped.has(key)) {
-        grouped.set(key, { sum: 0, count: 0 });
-      }
-      const item = grouped.get(key)!;
-      item.sum += numY;
-      item.count += 1;
-    });
+    return Array.from(groups.entries()).map(([name, stats]) => ({
+      name,
+      value:
+        aggregation === 'sum'
+          ? Number(stats.sum.toFixed(2))
+          : aggregation === 'avg'
+          ? Number((stats.sum / Math.max(1, stats.count)).toFixed(2))
+          : stats.count,
+      count: stats.count,
+    }));
+  }, [activeSheet, chartType, xAxisCol, yAxisCol, aggregation]);
 
-    return Array.from(grouped.entries()).map(([name, stat]) => {
-      let val = stat.sum;
-      if (aggMode === 'avg') val = Number((stat.sum / stat.count).toFixed(2));
-      if (aggMode === 'count') val = stat.count;
+  const handleExportSummaryCsv = () => {
+    if (!activeSheet || chartData.length === 0) return;
+    const xLabel = activeSheet.headers[xAxisCol] || 'Category';
+    const yLabel = `${activeSheet.headers[yAxisCol] || 'Value'} (${aggregation.toUpperCase()})`;
+    const rows = chartData.map((d) => [d.name, d.value]);
+    downloadCsv([xLabel, yLabel], rows, `chart_summary_${chartType}.csv`);
+  };
 
-      return {
-        name,
-        value: val,
-        count: stat.count,
-      };
-    });
-  }, [activeSheet, rows, xAxisCol, yAxisCol, aggMode]);
+  const handleExportSvg = () => {
+    const svgEl = chartContainerRef.current?.querySelector('svg');
+    if (!svgEl) return;
+    const clone = svgEl.cloneNode(true) as SVGSVGElement;
+    clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+    const serialized = new XMLSerializer().serializeToString(clone);
+    downloadText(serialized, `chart_${chartType}.svg`, 'image/svg+xml;charset=utf-8');
+  };
+
+  const xHeader = activeSheet?.headers[xAxisCol] || 'X Axis';
+  const yHeader = activeSheet?.headers[yAxisCol] || 'Value';
 
   return (
     <div className="space-y-6">
@@ -74,158 +121,214 @@ export const ChartWorkspace: React.FC = () => {
         currentWorkbook={workbook}
         onWorkbookLoaded={setWorkbook}
         onClear={() => setWorkbook(null)}
-        title="Upload data to visualize"
-        subtitle="Generate interactive Bar, Line, Area, or Pie charts with client-side grouped aggregations."
+        title="Drop a spreadsheet or CSV to generate interactive charts"
+        subtitle="Aggregate by category and plot Bar, Line, Area, Pie, or Scatter visualizations locally."
       />
 
-      {workbook && (
-        <div className="space-y-4">
-          {/* Controls Bar */}
-          <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-slate-800 bg-slate-900/80 p-4">
-            {/* Chart Type */}
-            <div className="flex items-center space-x-1.5">
-              {[
-                { id: 'bar', label: 'Bar', icon: BarChart3 },
-                { id: 'line', label: 'Line', icon: LineIcon },
-                { id: 'area', label: 'Area', icon: BarChart3 },
-                { id: 'pie', label: 'Pie', icon: PieIcon },
-              ].map((t) => {
-                const Icon = t.icon;
-                return (
+      {activeSheet && (
+        <>
+          <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] p-4 space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap gap-1.5">
+                {(
+                  [
+                    { id: 'bar', label: 'Bar' },
+                    { id: 'line', label: 'Line' },
+                    { id: 'area', label: 'Area' },
+                    { id: 'pie', label: 'Pie' },
+                    { id: 'scatter', label: 'Scatter' },
+                  ] as { id: ChartType; label: string }[]
+                ).map((c) => (
                   <button
-                    key={t.id}
-                    onClick={() => setChartType(t.id as any)}
-                    className={`flex items-center space-x-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                      chartType === t.id
-                        ? 'bg-emerald-500 text-slate-950 font-semibold shadow-md'
-                        : 'border border-slate-800 bg-slate-800 text-slate-300 hover:text-white'
+                    key={c.id}
+                    type="button"
+                    onClick={() => setChartType(c.id)}
+                    className={`h-8 rounded-lg border px-3 text-xs font-medium transition-colors ${
+                      chartType === c.id
+                        ? 'border-emerald-600 bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 font-semibold'
+                        : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
                     }`}
                   >
-                    <Icon className="h-3.5 w-3.5" />
-                    <span>{t.label}</span>
+                    {c.label}
                   </button>
-                );
-              })}
+                ))}
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleExportSvg}
+                  className="inline-flex items-center gap-1.5 h-8 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  <span>Export SVG</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleExportSummaryCsv}
+                  className="inline-flex items-center gap-1.5 h-8 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  <span>Summary CSV</span>
+                </button>
+              </div>
             </div>
 
-            {/* Column Axes Selector */}
-            <div className="flex flex-wrap items-center gap-3 text-xs text-slate-300">
-              <div className="flex items-center space-x-1.5">
-                <span>Category (X-Axis):</span>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+              <label className="space-y-1 text-slate-600 dark:text-slate-300">
+                <span>{chartType === 'scatter' ? 'X Axis (Numeric)' : 'Category / X Axis'}</span>
                 <select
-                  value={xAxisCol}
+                  value={Math.min(xAxisCol, Math.max(0, activeSheet.headers.length - 1))}
                   onChange={(e) => setXAxisCol(Number(e.target.value))}
-                  className="rounded border border-slate-700 bg-slate-800 px-2 py-1 text-slate-200"
+                  className="h-9 w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 px-2.5 text-slate-900 dark:text-slate-100"
                 >
-                  {headers.map((h, i) => (
-                    <option key={i} value={i}>
+                  {activeSheet.headers.map((h, i) => (
+                    <option key={h + i} value={i}>
                       {h}
                     </option>
                   ))}
                 </select>
-              </div>
+              </label>
 
-              <div className="flex items-center space-x-1.5">
-                <span>Value (Y-Axis):</span>
+              <label className="space-y-1 text-slate-600 dark:text-slate-300">
+                <span>Value / Y Axis</span>
                 <select
-                  value={yAxisCol}
+                  value={Math.min(yAxisCol, Math.max(0, activeSheet.headers.length - 1))}
                   onChange={(e) => setYAxisCol(Number(e.target.value))}
-                  className="rounded border border-slate-700 bg-slate-800 px-2 py-1 text-slate-200"
+                  className="h-9 w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 px-2.5 text-slate-900 dark:text-slate-100"
                 >
-                  {headers.map((h, i) => (
-                    <option key={i} value={i}>
+                  {activeSheet.headers.map((h, i) => (
+                    <option key={h + i} value={i}>
                       {h}
                     </option>
                   ))}
                 </select>
-              </div>
+              </label>
 
-              <div className="flex items-center space-x-1.5">
-                <span>Aggregation:</span>
+              <label className="space-y-1 text-slate-600 dark:text-slate-300">
+                <span>Aggregation</span>
                 <select
-                  value={aggMode}
-                  onChange={(e) => setAggMode(e.target.value as any)}
-                  className="rounded border border-slate-700 bg-slate-800 px-2 py-1 text-slate-200"
+                  disabled={chartType === 'scatter'}
+                  value={aggregation}
+                  onChange={(e) => setAggregation(e.target.value as AggregationType)}
+                  className="h-9 w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 px-2.5 text-slate-900 dark:text-slate-100 disabled:opacity-50"
                 >
-                  <option value="sum">Sum Totals</option>
+                  <option value="sum">Sum</option>
                   <option value="avg">Average</option>
-                  <option value="count">Count Frequency</option>
+                  <option value="count">Row Count</option>
                 </select>
-              </div>
+              </label>
             </div>
           </div>
 
-          {/* Chart Display Surface */}
-          <div className="rounded-xl border border-slate-800 bg-slate-900 p-6 shadow-xl">
-            <div className="mb-4 flex items-center justify-between border-b border-slate-800/80 pb-3">
-              <h4 className="text-sm font-semibold text-white">
-                {aggMode.toUpperCase()} of {headers[yAxisCol] || 'Metric'} by {headers[xAxisCol] || 'Category'}
-              </h4>
-              <span className="text-xs text-slate-400 font-mono">
-                {chartData.length} distinct groups
+          <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] p-5">
+            <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
+              <h3 className="font-display text-sm font-semibold text-slate-900 dark:text-white">
+                {yHeader} by {xHeader}
+              </h3>
+              <span className="text-xs text-slate-500 dark:text-slate-400 tabular-nums">
+                {chartData.length} data points · {chartType === 'scatter' ? 'Raw records' : aggregation.toUpperCase()}
               </span>
             </div>
 
-            <div className="h-80 w-full">
+            <div ref={chartContainerRef} className="h-[380px] w-full">
               <ResponsiveContainer width="100%" height="100%">
                 {chartType === 'bar' ? (
-                  <BarChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 40 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.5} />
-                    <XAxis dataKey="name" stroke="#94a3b8" angle={-25} textAnchor="end" interval={0} fontSize={11} />
-                    <YAxis stroke="#94a3b8" fontSize={11} />
+                  <BarChart data={chartData} margin={{ top: 10, right: 16, left: 8, bottom: 20 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#94a3b8" strokeOpacity={0.25} />
+                    <XAxis dataKey="name" tick={{ fontSize: 12, fill: '#64748b' }} />
+                    <YAxis tick={{ fontSize: 12, fill: '#64748b' }} />
                     <Tooltip
-                      contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '8px' }}
-                      itemStyle={{ color: '#10b981' }}
+                      contentStyle={{
+                        backgroundColor: '#0f172a',
+                        borderColor: '#334155',
+                        borderRadius: '8px',
+                        color: '#f8fafc',
+                        fontSize: '12px',
+                      }}
                     />
-                    <Bar dataKey="value" fill="#10b981" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="value" name={yHeader} fill="#059669" radius={[4, 4, 0, 0]} />
                   </BarChart>
                 ) : chartType === 'line' ? (
-                  <LineChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 40 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.5} />
-                    <XAxis dataKey="name" stroke="#94a3b8" angle={-25} textAnchor="end" fontSize={11} />
-                    <YAxis stroke="#94a3b8" fontSize={11} />
+                  <LineChart data={chartData} margin={{ top: 10, right: 16, left: 8, bottom: 20 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#94a3b8" strokeOpacity={0.25} />
+                    <XAxis dataKey="name" tick={{ fontSize: 12, fill: '#64748b' }} />
+                    <YAxis tick={{ fontSize: 12, fill: '#64748b' }} />
                     <Tooltip
-                      contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '8px' }}
-                      itemStyle={{ color: '#3b82f6' }}
+                      contentStyle={{
+                        backgroundColor: '#0f172a',
+                        borderColor: '#334155',
+                        borderRadius: '8px',
+                        color: '#f8fafc',
+                        fontSize: '12px',
+                      }}
                     />
-                    <Line type="monotone" dataKey="value" stroke="#3b82f6" strokeWidth={3} dot={{ r: 4 }} />
+                    <Line type="monotone" dataKey="value" name={yHeader} stroke="#059669" strokeWidth={2.5} dot={{ r: 4 }} />
                   </LineChart>
                 ) : chartType === 'area' ? (
-                  <AreaChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 40 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.5} />
-                    <XAxis dataKey="name" stroke="#94a3b8" angle={-25} textAnchor="end" fontSize={11} />
-                    <YAxis stroke="#94a3b8" fontSize={11} />
+                  <AreaChart data={chartData} margin={{ top: 10, right: 16, left: 8, bottom: 20 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#94a3b8" strokeOpacity={0.25} />
+                    <XAxis dataKey="name" tick={{ fontSize: 12, fill: '#64748b' }} />
+                    <YAxis tick={{ fontSize: 12, fill: '#64748b' }} />
                     <Tooltip
-                      contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '8px' }}
-                      itemStyle={{ color: '#10b981' }}
+                      contentStyle={{
+                        backgroundColor: '#0f172a',
+                        borderColor: '#334155',
+                        borderRadius: '8px',
+                        color: '#f8fafc',
+                        fontSize: '12px',
+                      }}
                     />
-                    <Area type="monotone" dataKey="value" stroke="#10b981" fill="#10b981" fillOpacity={0.25} />
+                    <Area type="monotone" dataKey="value" name={yHeader} stroke="#059669" fill="#059669" fillOpacity={0.2} strokeWidth={2} />
                   </AreaChart>
-                ) : (
+                ) : chartType === 'pie' ? (
                   <PieChart>
-                    <Tooltip
-                      contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '8px' }}
-                    />
-                    <Legend />
                     <Pie
                       data={chartData}
                       dataKey="value"
                       nameKey="name"
                       cx="50%"
                       cy="50%"
-                      outerRadius={100}
-                      label
+                      outerRadius={130}
+                      label={({ name, percent }) => `${name} (${((percent ?? 0) * 100).toFixed(0)}%)`}
                     >
-                      {chartData.map((_, index) => (
-                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                      {chartData.map((_, idx) => (
+                        <Cell key={idx} fill={SERIES_COLORS[idx % SERIES_COLORS.length]} />
                       ))}
                     </Pie>
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: '#0f172a',
+                        borderColor: '#334155',
+                        borderRadius: '8px',
+                        color: '#f8fafc',
+                        fontSize: '12px',
+                      }}
+                    />
+                    <Legend />
                   </PieChart>
+                ) : (
+                  <ScatterChart margin={{ top: 10, right: 16, left: 8, bottom: 20 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#94a3b8" strokeOpacity={0.25} />
+                    <XAxis type="number" dataKey="x" name={xHeader} tick={{ fontSize: 12, fill: '#64748b' }} />
+                    <YAxis type="number" dataKey="value" name={yHeader} tick={{ fontSize: 12, fill: '#64748b' }} />
+                    <Tooltip
+                      cursor={{ strokeDasharray: '3 3' }}
+                      contentStyle={{
+                        backgroundColor: '#0f172a',
+                        borderColor: '#334155',
+                        borderRadius: '8px',
+                        color: '#f8fafc',
+                        fontSize: '12px',
+                      }}
+                    />
+                    <Scatter name={`${xHeader} vs ${yHeader}`} data={chartData} fill="#059669" />
+                  </ScatterChart>
                 )}
               </ResponsiveContainer>
             </div>
           </div>
-        </div>
+        </>
       )}
     </div>
   );
