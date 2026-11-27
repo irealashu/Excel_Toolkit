@@ -58,13 +58,62 @@ describe('PDF & OCR Spatial Table Extractor', () => {
     assert.ok(result.avgConfidence > 90);
   });
 
-  it('parses numbers, currencies, and percentages while preserving IDs and dates', () => {
+  it('parses numbers, currencies, accounting negatives, OCR digit typos, and percentages while preserving IDs and dates', () => {
     assert.equal(parseCellValue('$1,240.50', true), 1240.5);
+    assert.equal(parseCellValue('$1,2OO.00', true), 1200);
+    assert.equal(parseCellValue('$ 1, 250.50', true), 1250.5);
+    assert.equal(parseCellValue("' $5,000.00", true), 5000);
+    assert.equal(parseCellValue(', $950.00', true), 950);
+    assert.equal(parseCellValue('($450.25)', true), -450.25);
     assert.equal(parseCellValue('25%', true), 0.25);
     assert.equal(parseCellValue('-42', true), -42);
     assert.equal(parseCellValue('ORD-9021', true), 'ORD-9021');
     assert.equal(parseCellValue('2026-11-26', true), '2026-11-26');
     assert.equal(parseCellValue('$1,240.50', false), '$1,240.50');
+  });
+
+  it('filters OCR border artifacts, skips grid-straddling title banners, and uses visual gridlines for exact column alignment', () => {
+    const tokens: PositionedToken[] = [
+      // Full-width document title sitting above the grid and crossing vertical divider x=150
+      { text: 'ACME', x: 50, y: 12, width: 45, height: 14, confidence: 97 },
+      { text: 'INDUSTRIAL', x: 102, y: 12, width: 92, height: 14, confidence: 96 },
+      { text: 'INVOICE', x: 200, y: 12, width: 65, height: 14, confidence: 95 },
+
+      // Stray border artifacts & low-conf micro-height speck noise
+      { text: '|', x: 145, y: 50, width: 2, height: 14, confidence: 20 },
+      { text: '___', x: 200, y: 40, width: 40, height: 3, confidence: 18 },
+      { text: 'ee', x: 210, y: 76, width: 10, height: 4, confidence: 40 },
+      { text: '~', x: 10, y: 12, width: 4, height: 4, confidence: 12 },
+
+      // Headers inside visual vertical gridlines [40, 150, 350, 480]
+      { text: '|SKU|', x: 55, y: 55, width: 38, height: 12, confidence: 96 },
+      { text: 'Item', x: 165, y: 55, width: 32, height: 12, confidence: 95 },
+      { text: 'Amount', x: 375, y: 55, width: 52, height: 12, confidence: 98 },
+
+      // Row 1 (note low confidence on Amount cell)
+      { text: 'A-01', x: 55, y: 90, width: 34, height: 12, confidence: 94 },
+      { text: 'Cable', x: 165, y: 90, width: 42, height: 12, confidence: 92 },
+      { text: 'Kit', x: 215, y: 90, width: 22, height: 12, confidence: 90 },
+      { text: '$4OO.00', x: 380, y: 90, width: 58, height: 12, confidence: 62 },
+    ];
+
+    const result = extractTableFromTokens(tokens, {
+      sensitivity: 'balanced',
+      firstRowAsHeaders: true,
+      parseNumbers: true,
+      trimCells: true,
+      dropEmptyRows: true,
+      filterOcrNoise: true,
+      gridLines: {
+        vertical: [40, 150, 350, 480],
+        horizontal: [45, 75, 110],
+      },
+    });
+
+    assert.deepEqual(result.headers, ['SKU', 'Item', 'Amount']);
+    assert.equal(result.rows.length, 1);
+    assert.deepEqual(result.rows[0], ['A-01', 'Cable Kit', 400]);
+    assert.equal(result.cellConfidences[0][2], 62);
   });
 
   it('parses flexible page range expressions safely', () => {
