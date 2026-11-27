@@ -36,28 +36,21 @@ const CATEGORY_ICONS: Record<ToolCategory, React.FC<{ className?: string }>> = {
   documents: FileText,
 };
 
-const PREVIEW_ROWS = [
-  { id: 'PRD-101', item: 'Enterprise Suite', qty: '150', price: '$1,200', formula: '=E2*F2', total: '$180,000.00' },
-  { id: 'PRD-102', item: 'Analytics Node', qty: '310', price: '$2,400', formula: '=E3*F3', total: '$744,000.00' },
-  { id: 'PRD-103', item: 'Cloud Connector', qty: '420', price: '$450', formula: '=E4*F4', total: '$189,000.00' },
-  { id: 'PRD-104', item: 'Security Audit Kit', qty: '95', price: '$820', formula: '=E5*F5', total: '$77,900.00' },
-];
-
 export const HomePage: React.FC<HomePageProps> = ({ onNavigate, onSelectTool }) => {
   const featuredTools = TOOLS.filter((t) => t.featured);
   const categoryList = Object.values(CATEGORIES);
 
   return (
     <div className="space-y-16 pb-12">
-      {/* Asymmetric SaaS Studio Hero */}
-      <section className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-center pt-4 lg:pt-8">
-        <div className="lg:col-span-6 space-y-6">
+      {/* Hero */}
+      <section className="pt-4 lg:pt-8">
+        <div className="max-w-3xl space-y-6">
           <div className="space-y-4">
             <h1 className="font-display text-4xl sm:text-5xl font-bold tracking-[-0.02em] text-slate-900 dark:text-white leading-[1.12]">
               Precision spreadsheet tools, running locally in your browser.
             </h1>
-            <p className="text-base text-slate-600 dark:text-slate-400 leading-relaxed max-w-xl">
-              Edit formulas, convert between 11 structured formats, clean messy datasets, diff workbooks, and inspect OpenXML macros without uploading a single byte to a server.
+            <p className="text-base text-slate-600 dark:text-slate-400 leading-relaxed max-w-2xl">
+              Convert normal and scanned PDFs to Excel with built-in OCR, edit formulas, transform 12+ structured formats, clean datasets, and inspect OpenXML macros without uploading a single byte to a server.
             </p>
           </div>
 
@@ -72,10 +65,20 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate, onSelectTool }) 
             </button>
             <button
               type="button"
-              onClick={() => onNavigate('tools')}
+              onClick={() => {
+                const pdfTool = TOOLS.find((t) => t.id === 'pdf-to-excel-ocr');
+                if (pdfTool) onSelectTool(pdfTool);
+              }}
               className="inline-flex items-center gap-2 h-11 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] hover:bg-slate-50 dark:hover:bg-slate-800 px-5 text-sm font-medium text-slate-700 dark:text-slate-200 transition-colors whitespace-nowrap"
             >
-              <span>Browse All {TOOLS.length} Tools</span>
+              <span>PDF &amp; OCR to Excel</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => onNavigate('tools')}
+              className="inline-flex items-center gap-2 h-11 rounded-lg px-3 text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-emerald-700 dark:hover:text-emerald-400 transition-colors whitespace-nowrap"
+            >
+              <span>All {TOOLS.length} Tools →</span>
             </button>
           </div>
 
@@ -93,74 +96,6 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate, onSelectTool }) 
             </span>
           </div>
         </div>
-
-        {/* Dominant Hero Focal Anchor: Live Formula Grid Preview */}
-        <div className="lg:col-span-6">
-          <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] shadow-sm overflow-hidden">
-            <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#0d1219] px-4 py-2.5 text-xs">
-              <div className="flex items-center gap-2 font-mono text-slate-600 dark:text-slate-300">
-                <span className="font-semibold text-emerald-700 dark:text-emerald-400">G6</span>
-                <span className="text-slate-300 dark:text-slate-700">|</span>
-                <span>=SUM(G2:G5)</span>
-              </div>
-              <button
-                type="button"
-                onClick={() => onNavigate('editor')}
-                className="text-xs font-medium text-emerald-700 dark:text-emerald-400 hover:underline whitespace-nowrap"
-              >
-                Open in Editor →
-              </button>
-            </div>
-
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs font-mono tabular-nums border-collapse">
-                <thead>
-                  <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-[#0d1219]/60 text-slate-400">
-                    <th className="w-8 py-2 text-center border-r border-slate-200 dark:border-slate-800 font-normal"></th>
-                    <th className="px-3 py-2 text-left border-r border-slate-200 dark:border-slate-800 font-semibold">A · SKU</th>
-                    <th className="px-3 py-2 text-left border-r border-slate-200 dark:border-slate-800 font-semibold">B · Product</th>
-                    <th className="px-3 py-2 text-right border-r border-slate-200 dark:border-slate-800 font-semibold">E · Qty</th>
-                    <th className="px-3 py-2 text-right border-r border-slate-200 dark:border-slate-800 font-semibold">F · Price</th>
-                    <th className="px-3 py-2 text-right font-semibold">G · Revenue</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
-                  {PREVIEW_ROWS.map((row, idx) => (
-                    <tr key={row.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/30">
-                      <td className="py-2 text-center text-slate-400 border-r border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-[#0d1219]/30">
-                        {idx + 2}
-                      </td>
-                      <td className="px-3 py-2 text-slate-600 dark:text-slate-400 border-r border-slate-100 dark:border-slate-800/60">
-                        {row.id}
-                      </td>
-                      <td className="px-3 py-2 font-sans text-slate-900 dark:text-slate-100 border-r border-slate-100 dark:border-slate-800/60 whitespace-nowrap">
-                        {row.item}
-                      </td>
-                      <td className="px-3 py-2 text-right text-slate-700 dark:text-slate-300 border-r border-slate-100 dark:border-slate-800/60">
-                        {row.qty}
-                      </td>
-                      <td className="px-3 py-2 text-right text-slate-700 dark:text-slate-300 border-r border-slate-100 dark:border-slate-800/60">
-                        {row.price}
-                      </td>
-                      <td className="px-3 py-2 text-right text-slate-900 dark:text-slate-100 font-medium">
-                        {row.total}
-                      </td>
-                    </tr>
-                  ))}
-                  <tr className="bg-emerald-50/60 dark:bg-emerald-950/25 font-semibold">
-                    <td className="py-2.5 text-center text-slate-400 border-r border-slate-200 dark:border-slate-800">6</td>
-                    <td colSpan={4} className="px-3 py-2.5 font-sans text-slate-700 dark:text-slate-200 border-r border-slate-200 dark:border-slate-800">
-                      Total Q3 Revenue (recursive formula evaluation)
-                    </td>
-                    <td className="px-3 py-2.5 text-right text-emerald-700 dark:text-emerald-400 ring-1 ring-inset ring-emerald-500/60">
-                      $1,190,900.00
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
       </section>
 
       {/* Featured Tools Grid */}
@@ -169,7 +104,7 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate, onSelectTool }) 
           <div>
             <h2 className="font-display text-xl font-bold text-slate-900 dark:text-white">Featured Workspaces</h2>
             <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
-              High-frequency tools ready immediately with built-in sample datasets.
+              High-frequency spreadsheet and document tools running locally in your browser.
             </p>
           </div>
           <button

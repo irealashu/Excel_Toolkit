@@ -1,7 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { Upload, AlertCircle, X, FileSpreadsheet } from 'lucide-react';
 import { parseWorkbookFile } from '../../core/files/parseWorkbook';
-import { cloneSampleWorkbook } from '../../core/files/sampleData';
 import { formatBytes } from '../../core/files/detectFormat';
 import { WorkbookData } from '../../registry/types';
 
@@ -12,8 +11,6 @@ interface FileDropzoneProps {
   onClear: () => void;
   title?: string;
   subtitle?: string;
-  allowSampleData?: boolean;
-  defaultSampleSheetIndex?: number;
 }
 
 export const FileDropzone: React.FC<FileDropzoneProps> = ({
@@ -23,8 +20,6 @@ export const FileDropzone: React.FC<FileDropzoneProps> = ({
   onClear,
   title = 'Drop a spreadsheet or structured file here',
   subtitle = 'Supports XLSX, XLS, CSV, TSV, JSON, YAML, XML, HTML, and Markdown. Processed locally in browser memory.',
-  allowSampleData = true,
-  defaultSampleSheetIndex = 0,
 }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -53,11 +48,6 @@ export const FileDropzone: React.FC<FileDropzoneProps> = ({
     e.preventDefault();
     setIsDragging(false);
     handleFiles(e.dataTransfer.files);
-  };
-
-  const handleLoadSample = () => {
-    setErrorMessage(null);
-    onWorkbookLoaded(cloneSampleWorkbook(defaultSampleSheetIndex));
   };
 
   const handleSheetChange = (sheetIndex: number) => {
@@ -186,16 +176,6 @@ export const FileDropzone: React.FC<FileDropzoneProps> = ({
           >
             {isLoading ? 'Reading file...' : 'Choose local file'}
           </button>
-
-          {allowSampleData && (
-            <button
-              type="button"
-              onClick={handleLoadSample}
-              className="h-9 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors whitespace-nowrap"
-            >
-              Load sample workbook
-            </button>
-          )}
         </div>
 
         <p className="mt-4 text-xs font-mono text-slate-400 dark:text-slate-500">

@@ -24,7 +24,6 @@ import {
 import { evaluateGrid, indexToColLetter } from '../../core/formulas';
 import { downloadEditorXlsx, downloadRawCsv } from '../../core/files/downloadBlob';
 import { parseWorkbookFile } from '../../core/files/parseWorkbook';
-import { cloneSampleWorkbook } from '../../core/files/sampleData';
 import { SheetData } from '../../registry/types';
 
 interface CellFormat {
@@ -33,40 +32,6 @@ interface CellFormat {
   align?: 'left' | 'center' | 'right';
   isCurrency?: boolean;
   isPercent?: boolean;
-}
-
-function makeDefaultSheets(): SheetData[] {
-  return [
-    {
-      name: 'Sales_Data',
-      headers: ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'],
-      rows: [
-        ['Product', 'Region', 'Q1 Sales', 'Q2 Sales', 'Total Units', 'Unit Price', 'Gross Revenue', 'Notes'],
-        ['Enterprise Suite', 'North America', 120, 145, '=C2+D2', 1200, '=E2*F2', 'Key Account'],
-        ['Cloud Starter', 'Europe', 310, 280, '=C3+D3', 350, '=E3*F3', 'Active promo'],
-        ['Security Gateway', 'Asia Pacific', 95, 110, '=C4+D4', 2400, '=E4*F4', 'Pending approval'],
-        ['IoT Edge Node', 'North America', 450, 520, '=C5+D5', 180, '=E5*F5', 'Standard tier'],
-        ['Summary', 'All Regions', '=AVERAGE(C2:C5)', '=AVERAGE(D2:D5)', '=SUM(E2:E5)', '', '=SUM(G2:G5)', 'Live formula'],
-        ...Array.from({ length: 14 }, () => Array(8).fill('')),
-      ],
-      totalRows: 20,
-      totalCols: 8,
-    },
-    {
-      name: 'Targets',
-      headers: ['A', 'B', 'C', 'D', 'E'],
-      rows: [
-        ['Department', 'Q1 Target', 'Q2 Target', 'H1 Total', 'Annual Goal'],
-        ['Enterprise Sales', 300000, 350000, '=B2+C2', 1500000],
-        ['SMB Cloud', 180000, 210000, '=B3+C3', 850000],
-        ['Security & Ops', 220000, 250000, '=B4+C4', 1000000],
-        ['Total', '=SUM(B2:B4)', '=SUM(C2:C4)', '=SUM(D2:D4)', '=SUM(E2:E4)'],
-        ...Array.from({ length: 15 }, () => Array(5).fill('')),
-      ],
-      totalRows: 20,
-      totalCols: 5,
-    },
-  ];
 }
 
 function makeBlankWorkbook(): SheetData[] {
@@ -87,28 +52,12 @@ function cloneSheets(s: SheetData[]): SheetData[] {
 }
 
 export const SpreadsheetEditor: React.FC = () => {
-  const [sheets, setSheets] = useState<SheetData[]>(makeDefaultSheets);
+  const [sheets, setSheets] = useState<SheetData[]>(makeBlankWorkbook);
   const [activeSheetIndex, setActiveSheetIndex] = useState(0);
-  const [selectedCell, setSelectedCell] = useState<{ row: number; col: number }>({ row: 5, col: 6 }); // Start on G6 (=SUM(G2:G5))
+  const [selectedCell, setSelectedCell] = useState<{ row: number; col: number }>({ row: 0, col: 0 });
   const [editingCell, setEditingCell] = useState<{ row: number; col: number } | null>(null);
   const [formulaInputValue, setFormulaInputValue] = useState('');
-  const [cellFormats, setCellFormats] = useState<Record<string, CellFormat>>({
-    '0:0:0': { bold: true },
-    '0:0:1': { bold: true },
-    '0:0:2': { bold: true },
-    '0:0:3': { bold: true },
-    '0:0:4': { bold: true },
-    '0:0:5': { bold: true },
-    '0:0:6': { bold: true },
-    '0:0:7': { bold: true },
-    '0:5:0': { bold: true },
-    '0:5:4': { bold: true },
-    '0:5:6': { bold: true, isCurrency: true },
-    '0:1:6': { isCurrency: true },
-    '0:2:6': { isCurrency: true },
-    '0:3:6': { isCurrency: true },
-    '0:4:6': { isCurrency: true },
-  });
+  const [cellFormats, setCellFormats] = useState<Record<string, CellFormat>>({});
 
   // Clean past / future stacks for reliable Undo & Redo
   const [past, setPast] = useState<SheetData[][]>([]);
@@ -399,16 +348,6 @@ export const SpreadsheetEditor: React.FC = () => {
     } finally {
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
-  };
-
-  const handleLoadSample = () => {
-    const sample = cloneSampleWorkbook(0);
-    const editorSheets = convertWorkbookToEditorSheets(sample.sheets);
-    commitSheets(editorSheets);
-    setActiveSheetIndex(0);
-    setSelectedCell({ row: 0, col: 0 });
-    setCellFormats({});
-    showToast('Loaded sample sales workbook.');
   };
 
   const handleNewBlank = () => {
@@ -983,14 +922,6 @@ export const SpreadsheetEditor: React.FC = () => {
           <span>
             {currentSheet.rows.length} rows × {currentSheet.headers.length} cols
           </span>
-          <span aria-hidden="true">·</span>
-          <button
-            type="button"
-            onClick={handleLoadSample}
-            className="text-emerald-700 dark:text-emerald-400 hover:underline font-medium"
-          >
-            Load sample sales
-          </button>
         </div>
       </div>
     </div>

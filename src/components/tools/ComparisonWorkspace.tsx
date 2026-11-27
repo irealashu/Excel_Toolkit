@@ -1,9 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Download, Plus, Trash2, Upload } from 'lucide-react';
+import { Download, Trash2, Upload } from 'lucide-react';
 import { FileDropzone } from './FileDropzone';
 import { DataPreviewTable } from './DataPreviewTable';
 import { WorkbookData } from '../../registry/types';
-import { cloneSampleWorkbook } from '../../core/files/sampleData';
 import { parseWorkbookFile } from '../../core/files/parseWorkbook';
 import { downloadCsv, downloadXlsx } from '../../core/files/downloadBlob';
 import { compareTables, joinTables, mergeTablesStack } from '../../core/transforms';
@@ -16,23 +15,6 @@ function mapToolToMode(toolId?: string): CompareMode {
   return 'diff';
 }
 
-function createSampleModifiedWorkbook(): WorkbookData {
-  const wb = cloneSampleWorkbook(0);
-  wb.fileName = 'Company_Sales_Q3_Revised.xlsx';
-  const rows = wb.sheets[0].rows;
-  // Modify price/revenue on row 2
-  if (rows[1]) {
-    rows[1][5] = 395;
-    rows[1][6] = 4740;
-    rows[1][7] = 'Completed';
-  }
-  // Remove last row and add a new order
-  rows.pop();
-  rows.push(['ORD-9033', 'Orion BioLabs', 'North America', 'Analytics Suite', 6, 2400, 14400, 'Processing']);
-  wb.sheets[0].totalRows = rows.length;
-  return wb;
-}
-
 interface ComparisonWorkspaceProps {
   initialToolId?: string;
 }
@@ -41,10 +23,8 @@ export const ComparisonWorkspace: React.FC<ComparisonWorkspaceProps> = ({ initia
   const [mode, setMode] = useState<CompareMode>(() => mapToolToMode(initialToolId));
 
   // Datasets for Diff & Join
-  const [wbA, setWbA] = useState<WorkbookData | null>(() => cloneSampleWorkbook(0));
-  const [wbB, setWbB] = useState<WorkbookData | null>(() =>
-    initialToolId === 'table-joiner' ? cloneSampleWorkbook(1) : createSampleModifiedWorkbook()
-  );
+  const [wbA, setWbA] = useState<WorkbookData | null>(null);
+  const [wbB, setWbB] = useState<WorkbookData | null>(null);
 
   // Diff config
   const [useKeyDiff, setUseKeyDiff] = useState(true);
@@ -54,32 +34,17 @@ export const ComparisonWorkspace: React.FC<ComparisonWorkspaceProps> = ({ initia
 
   // Join config
   const [joinType, setJoinType] = useState<'inner' | 'left' | 'full'>('left');
-  const [joinKeyA, setJoinKeyA] = useState(1); // Customer_Name
-  const [joinKeyB, setJoinKeyB] = useState(1); // Company_Name
+  const [joinKeyA, setJoinKeyA] = useState(0);
+  const [joinKeyB, setJoinKeyB] = useState(0);
 
   // Merger state
-  const [mergeList, setMergeList] = useState<WorkbookData[]>(() => [
-    cloneSampleWorkbook(0),
-    createSampleModifiedWorkbook(),
-  ]);
+  const [mergeList, setMergeList] = useState<WorkbookData[]>([]);
   const [mergeIncludeSource, setMergeIncludeSource] = useState(true);
   const [mergeError, setMergeError] = useState<string | null>(null);
   const mergeFileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    const next = mapToolToMode(initialToolId);
-    setMode(next);
-    if (next === 'join') {
-      setWbA(cloneSampleWorkbook(0));
-      setWbB(cloneSampleWorkbook(1));
-      setJoinKeyA(1);
-      setJoinKeyB(1);
-    } else if (next === 'diff') {
-      setWbA(cloneSampleWorkbook(0));
-      setWbB(createSampleModifiedWorkbook());
-      setDiffKeyA(0);
-      setDiffKeyB(0);
-    }
+    setMode(mapToolToMode(initialToolId));
   }, [initialToolId]);
 
   const sheetA = wbA ? wbA.sheets[wbA.activeSheetIndex] || wbA.sheets[0] : null;
@@ -195,32 +160,6 @@ export const ComparisonWorkspace: React.FC<ComparisonWorkspaceProps> = ({ initia
           ))}
         </div>
 
-        {mode === 'diff' && (
-          <button
-            type="button"
-            onClick={() => {
-              setWbA(cloneSampleWorkbook(0));
-              setWbB(createSampleModifiedWorkbook());
-            }}
-            className="h-8 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
-          >
-            Load Sample Revision Diff
-          </button>
-        )}
-        {mode === 'join' && (
-          <button
-            type="button"
-            onClick={() => {
-              setWbA(cloneSampleWorkbook(0));
-              setWbB(cloneSampleWorkbook(1));
-              setJoinKeyA(1);
-              setJoinKeyB(1);
-            }}
-            className="h-8 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
-          >
-            Load Sample Orders + Contacts Join
-          </button>
-        )}
       </div>
 
       {/* DIFF & JOIN DUAL DROPZONES */}
@@ -236,7 +175,6 @@ export const ComparisonWorkspace: React.FC<ComparisonWorkspaceProps> = ({ initia
               onClear={() => setWbA(null)}
               title="Drop Dataset A"
               subtitle="Baseline spreadsheet or left join table"
-              defaultSampleSheetIndex={0}
             />
           </div>
           <div className="space-y-2">
@@ -249,7 +187,6 @@ export const ComparisonWorkspace: React.FC<ComparisonWorkspaceProps> = ({ initia
               onClear={() => setWbB(null)}
               title="Drop Dataset B"
               subtitle="Updated spreadsheet or lookup table"
-              defaultSampleSheetIndex={mode === 'join' ? 1 : 0}
             />
           </div>
         </div>
@@ -487,14 +424,6 @@ export const ComparisonWorkspace: React.FC<ComparisonWorkspaceProps> = ({ initia
                 >
                   <Upload className="h-3.5 w-3.5" />
                   <span>Add Files</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setMergeList((prev) => [...prev, cloneSampleWorkbook(0)])}
-                  className="inline-flex items-center gap-1.5 h-8 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                  <span>Add Sample Sheet</span>
                 </button>
                 <button
                   type="button"

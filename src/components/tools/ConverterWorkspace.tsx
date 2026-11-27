@@ -3,7 +3,6 @@ import { Copy, Check, Download, AlertCircle, ArrowRightLeft, FileCode2 } from 'l
 import { FileDropzone } from './FileDropzone';
 import { DataPreviewTable } from './DataPreviewTable';
 import { WorkbookData } from '../../registry/types';
-import { cloneSampleWorkbook } from '../../core/files/sampleData';
 import { downloadText, downloadXlsx } from '../../core/files/downloadBlob';
 import {
   CellValue,
@@ -54,16 +53,6 @@ const FORMAT_OPTIONS: { id: OutputFormat; label: string; ext: string; mime: stri
   { id: 'latex', label: 'LaTeX', ext: 'tex', mime: 'application/x-tex' },
 ];
 
-const SAMPLE_SNIPPETS: Record<PasteFormat, string> = {
-  csv: `Order_ID,Customer,Region,Revenue\nORD-101,Apex Cloud,North America,6400\nORD-102,Zenith Logistics,Europe,4200\nORD-103,BioHealth Pharma,Asia Pacific,7850`,
-  tsv: `Order_ID\tCustomer\tRegion\tRevenue\nORD-101\tApex Cloud\tNorth America\t6400\nORD-102\tZenith Logistics\tEurope\t4200`,
-  json: `[\n  { "Order_ID": "ORD-101", "Customer": "Apex Cloud", "Revenue": 6400 },\n  { "Order_ID": "ORD-102", "Customer": "Zenith Logistics", "Revenue": 4200 }\n]`,
-  markdown: `| Order_ID | Customer | Region | Revenue |\n| --- | --- | --- | --- |\n| ORD-101 | Apex Cloud | North America | 6400 |\n| ORD-102 | Zenith Logistics | Europe | 4200 |`,
-  html: `<table>\n  <thead>\n    <tr><th>Order_ID</th><th>Customer</th><th>Revenue</th></tr>\n  </thead>\n  <tbody>\n    <tr><td>ORD-101</td><td>Apex Cloud</td><td>6400</td></tr>\n    <tr><td>ORD-102</td><td>Zenith Logistics</td><td>4200</td></tr>\n  </tbody>\n</table>`,
-  yaml: `- Order_ID: ORD-101\n  Customer: Apex Cloud\n  Revenue: 6400\n- Order_ID: ORD-102\n  Customer: Zenith Logistics\n  Revenue: 4200`,
-  xml: `<?xml version="1.0" encoding="UTF-8"?>\n<orders>\n  <order>\n    <Order_ID>ORD-101</Order_ID>\n    <Customer>Apex Cloud</Customer>\n    <Revenue>6400</Revenue>\n  </order>\n  <order>\n    <Order_ID>ORD-102</Order_ID>\n    <Customer>Zenith Logistics</Customer>\n    <Revenue>4200</Revenue>\n  </order>\n</orders>`,
-};
-
 function resolveInitialFormat(toolId?: string): { mode: 'export' | 'import'; output: OutputFormat; paste: PasteFormat } {
   switch (toolId) {
     case 'csv-to-xlsx':
@@ -99,12 +88,12 @@ export const ConverterWorkspace: React.FC<ConverterWorkspaceProps> = ({ initialT
   const initialConfig = resolveInitialFormat(initialToolId);
 
   const [mode, setMode] = useState<'export' | 'import'>(initialConfig.mode);
-  const [workbook, setWorkbook] = useState<WorkbookData | null>(() => cloneSampleWorkbook(0));
+  const [workbook, setWorkbook] = useState<WorkbookData | null>(null);
   const [outputFormat, setOutputFormat] = useState<OutputFormat>(initialConfig.output);
 
   // Format-specific export options
   const [csvDelimiter, setCsvDelimiter] = useState<string>(',');
-  const [sqlTableName, setSqlTableName] = useState('orders_summary');
+  const [sqlTableName, setSqlTableName] = useState('exported_table');
   const [sqlDialect, setSqlDialect] = useState<'postgres' | 'mysql' | 'sqlite'>('postgres');
   const [sqlIncludeCreate, setSqlIncludeCreate] = useState(true);
   const [xmlRootTag, setXmlRootTag] = useState('records');
@@ -114,7 +103,7 @@ export const ConverterWorkspace: React.FC<ConverterWorkspaceProps> = ({ initialT
 
   // Paste-to-table import mode
   const [pasteFormat, setPasteFormat] = useState<PasteFormat>(initialConfig.paste);
-  const [rawInput, setRawInput] = useState<string>(SAMPLE_SNIPPETS[initialConfig.paste]);
+  const [rawInput, setRawInput] = useState<string>('');
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
@@ -122,7 +111,6 @@ export const ConverterWorkspace: React.FC<ConverterWorkspaceProps> = ({ initialT
     setMode(next.mode);
     setOutputFormat(next.output);
     setPasteFormat(next.paste);
-    setRawInput(SAMPLE_SNIPPETS[next.paste]);
   }, [initialToolId]);
 
   const activeSheet = workbook ? workbook.sheets[workbook.activeSheetIndex] || workbook.sheets[0] : null;
@@ -479,10 +467,7 @@ export const ConverterWorkspace: React.FC<ConverterWorkspaceProps> = ({ initialT
                   <button
                     key={fmt}
                     type="button"
-                    onClick={() => {
-                      setPasteFormat(fmt);
-                      setRawInput(SAMPLE_SNIPPETS[fmt]);
-                    }}
+                    onClick={() => setPasteFormat(fmt)}
                     className={`h-8 rounded-lg border px-3 text-xs font-medium uppercase transition-colors ${
                       pasteFormat === fmt
                         ? 'border-emerald-600 bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 font-semibold'
@@ -495,13 +480,6 @@ export const ConverterWorkspace: React.FC<ConverterWorkspaceProps> = ({ initialT
               </div>
 
               <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setRawInput(SAMPLE_SNIPPETS[pasteFormat])}
-                  className="h-8 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors whitespace-nowrap"
-                >
-                  Load sample {pasteFormat.toUpperCase()}
-                </button>
                 <button
                   type="button"
                   disabled={!!parsedPaste.error || parsedPaste.headers.length === 0}

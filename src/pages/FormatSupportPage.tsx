@@ -1,6 +1,8 @@
 import React from 'react';
 
 const FORMAT_ROWS = [
+  { format: 'PDF — Normal & Scanned (.pdf)', read: 'Full (Hybrid + OCR)', write: 'Via .xlsx / .csv', notes: 'Extracts native PDF text coordinates instantly and runs local Otsu preprocessing + Tesseract OCR on scanned pages.' },
+  { format: 'Scanned Images (.png, .jpg, .webp)', read: 'Full (OCR)', write: 'Via .xlsx / .csv', notes: 'Runs contrast normalization, binarization, and spatial table reconstruction directly into Excel.' },
   { format: 'Excel Modern (.xlsx)', read: 'Full', write: 'Full', notes: 'Multi-sheet workbooks, column widths, metadata, and OpenXML inspection.' },
   { format: 'Excel Legacy (.xls)', read: 'Full', write: 'Via .xlsx', notes: 'BIFF binary workbooks parsed locally and upgraded cleanly to .xlsx.' },
   { format: 'Excel Macro-Enabled (.xlsm)', read: 'Full (Safe)', write: 'Sanitized .xlsx', notes: 'Reads sheets safely without running VBA; strips vbaProject.bin on sanitize.' },

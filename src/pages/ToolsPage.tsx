@@ -10,7 +10,7 @@ interface ToolsPageProps {
   onCategoryChange?: (category: string) => void;
 }
 
-const FORMAT_FILTERS = ['all', '.xlsx', '.csv', '.json', '.sql', '.yaml', '.xml', '.md'] as const;
+const FORMAT_FILTERS = ['all', '.pdf', '.xlsx', '.csv', '.json', '.sql', '.yaml', '.xml', '.md'] as const;
 
 export const ToolsPage: React.FC<ToolsPageProps> = ({
   initialCategory = 'all',

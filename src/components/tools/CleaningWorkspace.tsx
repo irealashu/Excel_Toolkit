@@ -3,7 +3,6 @@ import { RotateCcw, Download, CheckCircle2 } from 'lucide-react';
 import { FileDropzone } from './FileDropzone';
 import { DataPreviewTable } from './DataPreviewTable';
 import { WorkbookData } from '../../registry/types';
-import { cloneSampleWorkbook } from '../../core/files/sampleData';
 import { downloadJson } from '../../core/files/downloadBlob';
 import {
   combineColumns,
@@ -60,7 +59,7 @@ interface CleaningWorkspaceProps {
 }
 
 export const CleaningWorkspace: React.FC<CleaningWorkspaceProps> = ({ initialToolId }) => {
-  const [workbook, setWorkbook] = useState<WorkbookData | null>(() => cloneSampleWorkbook(0));
+  const [workbook, setWorkbook] = useState<WorkbookData | null>(null);
   const [activeTab, setActiveTab] = useState<CleanTab>(() => mapToolToTab(initialToolId));
 
   // Working copy of active sheet so destructive operations (whitespace/blanks/split/replace) can be chained or reset

@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Calendar, Contact, Download, Copy, Check, AlertCircle } from 'lucide-react';
 import { FileDropzone } from './FileDropzone';
 import { WorkbookData } from '../../registry/types';
-import { cloneSampleWorkbook } from '../../core/files/sampleData';
 import { tableToIcs, tableToVCard } from '../../core/converters';
 import { downloadText } from '../../core/files/downloadBlob';
 
@@ -15,7 +14,7 @@ function findHeaderIndex(headers: string[], patterns: RegExp[], fallback = -1): 
 
 export const DocumentWorkspace: React.FC = () => {
   const [mode, setMode] = useState<DocMode>('ics');
-  const [workbook, setWorkbook] = useState<WorkbookData | null>(() => cloneSampleWorkbook(2)); // Project_Schedule
+  const [workbook, setWorkbook] = useState<WorkbookData | null>(null);
   const [copied, setCopied] = useState(false);
 
   // ICS column mapping
@@ -52,13 +51,6 @@ export const DocumentWorkspace: React.FC = () => {
 
   const handleModeSwitch = (nextMode: DocMode) => {
     setMode(nextMode);
-    // If user is on the built-in sample workbook, automatically jump to the matching sample sheet
-    if (workbook && workbook.fileName === 'Company_Sales_Q3_Sample.xlsx') {
-      const targetIdx = nextMode === 'ics' ? 2 : 1;
-      if (workbook.sheets[targetIdx]) {
-        setWorkbook({ ...workbook, activeSheetIndex: targetIdx });
-      }
-    }
   };
 
   const icsResult = useMemo(() => {
@@ -138,7 +130,6 @@ export const DocumentWorkspace: React.FC = () => {
         currentWorkbook={workbook}
         onWorkbookLoaded={setWorkbook}
         onClear={() => setWorkbook(null)}
-        defaultSampleSheetIndex={mode === 'ics' ? 2 : 1}
         title={mode === 'ics' ? 'Drop a schedule spreadsheet to build .ics events' : 'Drop a contacts spreadsheet to build .vcf vCards'}
         subtitle="Select your worksheet and map columns below. Everything is generated locally."
       />

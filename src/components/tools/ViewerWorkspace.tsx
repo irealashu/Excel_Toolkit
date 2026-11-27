@@ -1,12 +1,11 @@
 import React, { useState } from 'react';
 import { FileDropzone } from './FileDropzone';
 import { DataPreviewTable } from './DataPreviewTable';
-import { cloneSampleWorkbook } from '../../core/files/sampleData';
 import { WorkbookData } from '../../registry/types';
 import { Layers, FileSpreadsheet, ShieldAlert, CheckCircle2 } from 'lucide-react';
 
 export const ViewerWorkspace: React.FC = () => {
-  const [workbook, setWorkbook] = useState<WorkbookData | null>(() => cloneSampleWorkbook(0));
+  const [workbook, setWorkbook] = useState<WorkbookData | null>(null);
 
   const activeSheet = workbook ? workbook.sheets[workbook.activeSheetIndex] || workbook.sheets[0] : null;
 
@@ -101,7 +100,7 @@ export const ViewerWorkspace: React.FC = () => {
           <FileSpreadsheet className="h-8 w-8 text-slate-400 mx-auto" />
           <p className="text-sm font-medium text-slate-700 dark:text-slate-300">No workbook loaded</p>
           <p className="text-xs text-slate-500 dark:text-slate-400">
-            Select any local spreadsheet above or load the sample workbook to inspect worksheets, dimensions, and rows.
+            Select any local spreadsheet above to inspect worksheets, dimensions, and rows.
           </p>
         </div>
       )}

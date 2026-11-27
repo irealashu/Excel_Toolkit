@@ -33,6 +33,20 @@ export const TOOLS: ToolDefinition[] = [
 
   // --- Converters ---
   {
+    id: 'pdf-to-excel-ocr',
+    slug: 'pdf-to-excel-ocr',
+    name: 'PDF & Scanned OCR to Excel',
+    description: 'Extract tables from both normal native-text PDFs and scanned image PDFs using local hybrid PDF.js + Tesseract OCR into .xlsx.',
+    category: 'converters',
+    searchKeywords: ['pdf to excel', 'ocr', 'scanned pdf', 'pdf table extractor', 'image to excel', 'tesseract', 'pdf to xlsx'],
+    acceptedFormats: ['.pdf', '.png', '.jpg', '.webp'],
+    outputFormats: ['.xlsx', '.csv', '.json', '.txt'],
+    processingMode: 'client-main',
+    capabilities: ['Auto native-text + OCR hybrid', 'Otsu scan binarization', 'Multi-language Tesseract OCR', 'Spatial column reconstruction', 'Multi-page XLSX export'],
+    implementationStatus: 'implemented',
+    featured: true,
+  },
+  {
     id: 'csv-to-xlsx',
     slug: 'csv-to-xlsx',
     name: 'CSV to XLSX Converter',

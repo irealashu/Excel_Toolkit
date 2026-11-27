@@ -7,7 +7,6 @@ import {
 } from '../../core/security';
 import { downloadBlob, downloadJson } from '../../core/files/downloadBlob';
 import { formatBytes } from '../../core/files/detectFormat';
-import { createSampleXlsxFile } from '../../core/files/sampleData';
 
 export const SecurityWorkspace: React.FC = () => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -34,11 +33,6 @@ export const SecurityWorkspace: React.FC = () => {
       setIsInspecting(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
-  };
-
-  const handleLoadSampleAudit = async () => {
-    const sampleFile = createSampleXlsxFile();
-    await runInspection(sampleFile);
   };
 
   const handleScrub = async () => {
@@ -92,14 +86,6 @@ export const SecurityWorkspace: React.FC = () => {
             className="h-9 rounded-lg bg-emerald-600 hover:bg-emerald-700 dark:bg-emerald-500 dark:hover:bg-emerald-400 px-4 text-xs font-semibold text-white dark:text-slate-950 transition-colors"
           >
             {isInspecting ? 'Inspecting ZIP package...' : 'Select .xlsx / .xlsm file'}
-          </button>
-          <button
-            type="button"
-            disabled={isInspecting}
-            onClick={handleLoadSampleAudit}
-            className="h-9 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
-          >
-            Inspect Sample Audit Workbook
           </button>
         </div>
       </div>

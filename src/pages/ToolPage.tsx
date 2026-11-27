@@ -13,6 +13,7 @@ import { ChartWorkspace } from '../components/tools/ChartWorkspace';
 import { TemplatesWorkspace } from '../components/tools/TemplatesWorkspace';
 import { SecurityWorkspace } from '../components/tools/SecurityWorkspace';
 import { DocumentWorkspace } from '../components/tools/DocumentWorkspace';
+import { PdfOcrWorkspace } from '../components/tools/PdfOcrWorkspace';
 
 interface ToolPageProps {
   tool: ToolDefinition;
@@ -27,6 +28,9 @@ export const ToolPage: React.FC<ToolPageProps> = ({ tool, onNavigate, onSelectTo
     .slice(0, 3);
 
   const renderWorkspace = () => {
+    if (tool.id === 'pdf-to-excel-ocr') {
+      return <PdfOcrWorkspace />;
+    }
     switch (tool.category) {
       case 'viewers':
         return <ViewerWorkspace />;

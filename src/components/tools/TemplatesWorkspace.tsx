@@ -76,7 +76,7 @@ export const TemplatesWorkspace: React.FC = () => {
                 Preview: {previewTemplate.name}
               </h3>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                Sample starter model with placeholder records — verify figures and formulas for your use case.
+                Starter template with placeholder fields — verify figures and formulas for your use case.
               </p>
             </div>
             <button

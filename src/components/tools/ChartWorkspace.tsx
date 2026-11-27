@@ -21,7 +21,6 @@ import {
 import { Download } from 'lucide-react';
 import { FileDropzone } from './FileDropzone';
 import { WorkbookData } from '../../registry/types';
-import { cloneSampleWorkbook } from '../../core/files/sampleData';
 import { downloadCsv, downloadText } from '../../core/files/downloadBlob';
 
 type ChartType = 'bar' | 'line' | 'area' | 'pie' | 'scatter';
@@ -30,10 +29,10 @@ type AggregationType = 'sum' | 'avg' | 'count';
 const SERIES_COLORS = ['#059669', '#0284c7', '#d97706', '#7c3aed', '#e11d48', '#0d9488', '#4f46e5'];
 
 export const ChartWorkspace: React.FC = () => {
-  const [workbook, setWorkbook] = useState<WorkbookData | null>(() => cloneSampleWorkbook(0));
+  const [workbook, setWorkbook] = useState<WorkbookData | null>(null);
   const [chartType, setChartType] = useState<ChartType>('bar');
-  const [xAxisCol, setXAxisCol] = useState(2); // Region
-  const [yAxisCol, setYAxisCol] = useState(6); // Total_Revenue
+  const [xAxisCol, setXAxisCol] = useState(0);
+  const [yAxisCol, setYAxisCol] = useState(1);
   const [aggregation, setAggregation] = useState<AggregationType>('sum');
   const chartContainerRef = useRef<HTMLDivElement>(null);
 
